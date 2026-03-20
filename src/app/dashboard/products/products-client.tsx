@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Package, Layers, Boxes, ChevronDown } from "lucide-react";
 import type { Product } from "@/lib/types/database";
 
@@ -36,7 +36,6 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Build component set from bundle relationships
   const componentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const p of products) {
@@ -65,22 +64,20 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
     (p) => p.item_type === "inventory" && componentIds.has(p.id)
   );
 
-  const handleRecategorize = async (
+  const handleRecategorize = useCallback(async (
     product: Product,
     newCategory: ProductCategory
   ) => {
     setSaving(true);
+    setEditingId(null);
     try {
       let updates: Record<string, unknown> = {};
 
       if (newCategory === "finished_good") {
-        // Convert to bundle type
         updates = { item_type: "bundle", bundle_id: null, bundle_quantity: null };
       } else if (newCategory === "component") {
-        // Convert to inventory, keep as component (bundle_id stays if it has one)
         updates = { item_type: "inventory" };
       } else {
-        // finished_good_no_bom: inventory type, remove bundle linkage
         updates = { item_type: "inventory", bundle_id: null, bundle_quantity: null };
       }
 
@@ -98,42 +95,97 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
       }
     } finally {
       setSaving(false);
-      setEditingId(null);
     }
-  };
+  }, []);
 
   const totalFinishedGoods = finishedGoods.length + standaloneFinished.length;
 
-  const renderCategoryDropdown = (product: Product) => {
+  // Only show dropdown for items NOT in a bundle relationship (not bundles or their children)
+  const canEdit = useCallback((product: Product): boolean => {
+    // Don't allow editing bundle items (QB Groups)
+    if (product.item_type === "bundle") return false;
+    // Don't allow editing items that are children of a bundle
+    if (product.bundle_id) return false;
+    return true;
+  }, []);
+
+  const renderCategoryBadge = (product: Product) => {
     const current = classifyProduct(product, componentIds);
+    const editable = canEdit(product);
+
+    if (!editable) {
+      return (
+        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_STYLES[current]}`}>
+          {CATEGORY_LABELS[current]}
+        </span>
+      );
+    }
+
     const isEditing = editingId === product.id;
 
     return (
-      <div className="relative">
+      <div className="relative inline-block">
         <button
-          onClick={() => setEditingId(isEditing ? null : product.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingId(isEditing ? null : product.id);
+          }}
           disabled={saving}
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${CATEGORY_STYLES[current]} hover:opacity-80`}
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors ${CATEGORY_STYLES[current]} hover:opacity-80`}
         >
           {CATEGORY_LABELS[current]}
           <ChevronDown className="h-3 w-3" />
         </button>
         {isEditing && (
-          <div className="absolute right-0 top-full mt-1 z-10 w-56 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
-            {(Object.keys(CATEGORY_LABELS) as ProductCategory[]).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => handleRecategorize(product, cat)}
-                disabled={saving}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                  cat === current ? "font-medium text-gray-900" : "text-gray-600"
-                }`}
-              >
-                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium mr-2 ${CATEGORY_STYLES[cat]}`}>
-                  {CATEGORY_LABELS[cat]}
-                </span>
-              </button>
-            ))}
+          <div
+            className="fixed z-50 w-56 rounded-lg border border-gray-200 bg-white shadow-lg py-1"
+            style={{
+              top: "auto",
+              right: "auto",
+            }}
+            ref={(el) => {
+              if (el) {
+                const btn = el.previousElementSibling as HTMLElement;
+                if (btn) {
+                  const rect = btn.getBoundingClientRect();
+                  const spaceBelow = window.innerHeight - rect.bottom;
+                  const menuHeight = 140;
+                  if (spaceBelow < menuHeight) {
+                    el.style.top = `${rect.top - menuHeight}px`;
+                  } else {
+                    el.style.top = `${rect.bottom + 4}px`;
+                  }
+                  el.style.left = `${Math.max(8, rect.right - 224)}px`;
+                }
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(Object.keys(CATEGORY_LABELS) as ProductCategory[]).map((cat) => {
+              const isCurrent = cat === current;
+              return (
+                <button
+                  key={cat}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isCurrent) {
+                      handleRecategorize(product, cat);
+                    } else {
+                      setEditingId(null);
+                    }
+                  }}
+                  disabled={saving}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                    isCurrent ? "font-medium text-gray-900 bg-gray-50" : "text-gray-600"
+                  }`}
+                >
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_STYLES[cat]}`}>
+                    {CATEGORY_LABELS[cat]}
+                  </span>
+                  {isCurrent && <span className="text-xs text-gray-400">current</span>}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -175,7 +227,7 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                   return (
                     <div
                       key={fg.id}
-                      className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+                      className="rounded-xl border border-gray-200 bg-white"
                     >
                       <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-brand-50 to-white border-b border-gray-100">
                         <div className="h-8 w-8 rounded-lg bg-brand-100 flex items-center justify-center">
@@ -189,7 +241,9 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                             {fg.sku || "No SKU"} &middot; {components.length} component{components.length !== 1 ? "s" : ""}
                           </p>
                         </div>
-                        {renderCategoryDropdown(fg)}
+                        <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-medium text-brand-700">
+                          Finished Good
+                        </span>
                       </div>
                       {components.length > 0 && (
                         <div>
@@ -214,7 +268,9 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                                 <span className="text-xs text-gray-500 w-12 text-right">
                                   &times;{comp.bundle_quantity || 1}
                                 </span>
-                                {renderCategoryDropdown(comp)}
+                                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                                  Component
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -233,7 +289,7 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Finished Goods — No BOM ({standaloneFinished.length})
               </h2>
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div className="rounded-xl border border-gray-200 bg-white">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50">
@@ -252,7 +308,7 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                           {p.unit_cost ? `$${Number(p.unit_cost).toFixed(2)}` : "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {renderCategoryDropdown(p)}
+                          {renderCategoryBadge(p)}
                         </td>
                       </tr>
                     ))}
@@ -268,7 +324,7 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Components / Raw Materials ({rawMaterials.length})
               </h2>
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div className="rounded-xl border border-gray-200 bg-white">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50">
@@ -300,7 +356,7 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {renderCategoryDropdown(p)}
+                            {renderCategoryBadge(p)}
                           </td>
                         </tr>
                       );
@@ -313,10 +369,10 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
         </div>
       )}
 
-      {/* Click-away overlay */}
+      {/* Click-away to close dropdown */}
       {editingId && (
         <div
-          className="fixed inset-0 z-0"
+          className="fixed inset-0 z-40"
           onClick={() => setEditingId(null)}
         />
       )}

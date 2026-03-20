@@ -7,6 +7,7 @@ const createMappingSchema = z.object({
   external_id: z.string().min(1),
   source: z.enum(["amazon", "3pl", "shopify", "manual"]),
   label: z.string().optional().nullable(),
+  unit_multiplier: z.number().int().min(1).default(1),
 });
 
 const updateMappingSchema = z.object({
@@ -15,6 +16,7 @@ const updateMappingSchema = z.object({
   external_id: z.string().min(1).optional(),
   source: z.enum(["amazon", "3pl", "shopify", "manual"]).optional(),
   label: z.string().optional().nullable(),
+  unit_multiplier: z.number().int().min(1).optional(),
 });
 
 export async function GET(request: NextRequest) {

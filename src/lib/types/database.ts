@@ -28,6 +28,7 @@ export interface SkuMapping {
   external_id: string;
   source: Source;
   label: string | null;
+  unit_multiplier: number;
   active: boolean;
   created_at: string;
   updated_at: string;

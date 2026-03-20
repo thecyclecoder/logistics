@@ -33,6 +33,7 @@ interface ModalState {
   source: Source;
   externalId: string;
   label: string;
+  unitMultiplier: number;
 }
 
 const INITIAL_MODAL: ModalState = {
@@ -42,6 +43,7 @@ const INITIAL_MODAL: ModalState = {
   source: "amazon",
   externalId: "",
   label: "",
+  unitMultiplier: 1,
 };
 
 export default function MappingClient({
@@ -105,6 +107,7 @@ export default function MappingClient({
       source: mapping.source,
       externalId: mapping.external_id,
       label: mapping.label || "",
+      unitMultiplier: mapping.unit_multiplier || 1,
     });
     setProductSearch("");
   };
@@ -122,6 +125,7 @@ export default function MappingClient({
             external_id: modal.externalId,
             source: modal.source,
             label: modal.label || null,
+            unit_multiplier: modal.unitMultiplier,
           }),
         });
         if (res.ok) {
@@ -139,6 +143,7 @@ export default function MappingClient({
             external_id: modal.externalId,
             source: modal.source,
             label: modal.label || null,
+            unit_multiplier: modal.unitMultiplier,
           }),
         });
         if (res.ok) {
@@ -223,6 +228,7 @@ export default function MappingClient({
                 <th className="px-4 py-3 text-left font-medium text-gray-500">External ID</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Label</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-500">Units</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">QB Product</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
               </tr>
@@ -230,7 +236,7 @@ export default function MappingClient({
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                     {mappings.length === 0
                       ? "No mappings yet. Add your first mapping to get started."
                       : "No mappings match your filters."}
@@ -250,6 +256,15 @@ export default function MappingClient({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-500">{m.label || "—"}</td>
+                    <td className="px-4 py-3 text-center">
+                      {m.unit_multiplier > 1 ? (
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+                          {m.unit_multiplier}-pack
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">1</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {m.products?.quickbooks_name || "—"}
                     </td>
@@ -409,6 +424,28 @@ export default function MappingClient({
                   placeholder="e.g., Main ASIN, Seller SKU"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
+              </div>
+
+              {/* Unit Multiplier */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Units per SKU
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={modal.unitMultiplier}
+                  onChange={(e) =>
+                    setModal((m) => ({
+                      ...m,
+                      unitMultiplier: Math.max(1, parseInt(e.target.value) || 1),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  How many finished good units does this SKU represent? (e.g., 2 for a 2-pack)
+                </p>
               </div>
             </div>
 

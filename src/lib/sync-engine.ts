@@ -163,7 +163,7 @@ export async function sync3PLInventory(): Promise<SyncResult> {
       await supabase.from("inventory_snapshots").insert({
         product_id: productId,
         source: "3pl",
-        quantity: item.quantity,
+        quantity: item.quantity_available,
         raw_payload: item as unknown as Record<string, unknown>,
       });
 

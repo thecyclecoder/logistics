@@ -1,25 +1,28 @@
-const API_URL = process.env.AMPLIFIER_API_URL || "https://app.amplifier.com/api";
+const API_BASE = "https://api.amplifier.com";
 const API_KEY = process.env.AMPLIFIER_API_KEY || "";
 
-function headers() {
+function getHeaders(): Record<string, string> {
+  // HTTP Basic Auth: API key as username, no password
+  const basicAuth = Buffer.from(`${API_KEY}:`).toString("base64");
   return {
-    Authorization: `Bearer ${API_KEY}`,
+    Authorization: `Basic ${basicAuth}`,
     "Content-Type": "application/json",
-    Accept: "application/json",
   };
 }
 
 export interface AmplifierInventoryItem {
   sku: string;
-  quantity: number;
-  warehouse?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+  quantity_available: number;
+  quantity_on_hand: number;
+  quantity_committed: number;
+  quantity_expected: number;
+  safety_stock: number;
+  made_to_order: boolean;
 }
 
 export async function fetchInventory(): Promise<AmplifierInventoryItem[]> {
-  const res = await fetch(`${API_URL}/inventory`, {
-    headers: headers(),
+  const res: Response = await fetch(`${API_BASE}/reports/inventory/current`, {
+    headers: getHeaders(),
   });
 
   if (!res.ok) {
@@ -28,7 +31,7 @@ export async function fetchInventory(): Promise<AmplifierInventoryItem[]> {
   }
 
   const data = await res.json();
-  return Array.isArray(data) ? data : data.inventory || data.items || [];
+  return data.inventory || [];
 }
 
 export interface AmplifierOrderPayload {
@@ -53,9 +56,9 @@ export async function createOrder(
   payload: AmplifierOrderPayload
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
-  const res = await fetch(`${API_URL}/orders`, {
+  const res: Response = await fetch(`${API_BASE}/orders`, {
     method: "POST",
-    headers: headers(),
+    headers: getHeaders(),
     body: JSON.stringify(payload),
   });
 

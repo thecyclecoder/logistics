@@ -296,7 +296,6 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                     <tr className="border-b border-gray-200 bg-gray-50">
                       <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-500">SKU</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-500">Unit Cost</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-500">Type</th>
                     </tr>
                   </thead>
@@ -305,9 +304,6 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
                       <tr key={p.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium text-gray-900">{p.quickbooks_name}</td>
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.sku || "—"}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">
-                          {p.unit_cost ? `$${Number(p.unit_cost).toFixed(2)}` : "—"}
-                        </td>
                         <td className="px-4 py-3 text-right">
                           {renderCategoryBadge(p)}
                         </td>

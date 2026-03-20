@@ -89,7 +89,7 @@ export async function syncQBProducts(): Promise<SyncResult> {
             quickbooks_id: item.Id,
             quickbooks_name: item.Name,
             sku: item.Sku || null,
-            unit_cost: item.UnitPrice || null,
+            unit_cost: item.PurchaseCost || null,
             active: item.Active,
             item_type: "inventory",
           },
@@ -99,6 +99,15 @@ export async function syncQBProducts(): Promise<SyncResult> {
       if (error) {
         console.error(`Failed to upsert product ${item.Id}:`, error.message);
         continue;
+      }
+
+      // Zero out sales price in QB if it's non-zero
+      if (item.UnitPrice && item.UnitPrice > 0) {
+        try {
+          await qb.updateItem(item.Id, { UnitPrice: 0 });
+        } catch (err) {
+          console.error(`Failed to zero UnitPrice for ${item.Id}:`, err);
+        }
       }
 
       const { data: product } = await supabase
@@ -128,7 +137,7 @@ export async function syncQBProducts(): Promise<SyncResult> {
             quickbooks_id: group.Id,
             quickbooks_name: group.Name,
             sku: group.Sku || null,
-            unit_cost: group.UnitPrice || null,
+            unit_cost: group.PurchaseCost || null,
             active: group.Active,
             item_type: "bundle",
           },

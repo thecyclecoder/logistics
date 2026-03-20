@@ -98,6 +98,41 @@ function baseUrl(): string {
     : "https://sandbox-quickbooks.api.intuit.com";
 }
 
+export async function updateItem(
+  itemId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updates: Record<string, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const { token, realmId } = await getRealmAndToken();
+
+  // QB requires full item for update, so fetch first
+  const current = await fetchItemById(token, realmId, itemId);
+
+  const merged = { ...current, ...updates };
+
+  const res = await fetch(
+    `${baseUrl()}/v3/company/${realmId}/item?minorversion=65`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(merged),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`QB item update failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  return data.Item;
+}
+
 export interface QBGroupLine {
   ItemRef: { value: string; name: string; type: string };
   Qty: number;
@@ -110,6 +145,8 @@ export interface QBItem {
   Type: string;
   QtyOnHand?: number;
   UnitPrice?: number;
+  PurchaseCost?: number;
+  SyncToken?: string;
   Active: boolean;
   ItemGroupDetail?: {
     ItemGroupLine: QBGroupLine[];

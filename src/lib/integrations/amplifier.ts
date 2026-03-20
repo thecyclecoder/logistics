@@ -34,28 +34,53 @@ export async function fetchInventory(): Promise<AmplifierInventoryItem[]> {
   return data.inventory || [];
 }
 
+interface AmplifierAddress {
+  first_name: string;
+  last_name: string;
+  name: string;
+  company_name?: string;
+  address1: string;
+  address2?: string;
+  address3?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country_code: string;
+  phone?: string;
+  email?: string;
+  residential?: boolean;
+}
+
 export interface AmplifierOrderPayload {
-  order_number: string;
+  order_source_code?: string;
+  order_id: string;
+  order_date: string;
+  order_type?: string;
+  billing_info?: AmplifierAddress;
+  shipping_info: AmplifierAddress;
   shipping_method: string;
-  ship_to: {
-    name: string;
-    address1: string;
-    address2?: string;
-    city: string;
-    state: string;
-    zip: string;
-    country: string;
-  };
-  items: Array<{
+  allow_partial_shipment?: boolean;
+  packing_slip_message?: string;
+  hold_until_date?: string;
+  currency_code?: string;
+  total_amount?: number;
+  subtotal_amount?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  shipping_amount?: number;
+  line_items: Array<{
+    reference_id?: string;
     sku: string;
+    description?: string;
     quantity: number;
+    unit_price?: number;
+    assets?: Array<{ url: string }>;
   }>;
 }
 
 export async function createOrder(
   payload: AmplifierOrderPayload
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
+): Promise<{ id: string }> {
   const res: Response = await fetch(`${API_BASE}/orders`, {
     method: "POST",
     headers: getHeaders(),

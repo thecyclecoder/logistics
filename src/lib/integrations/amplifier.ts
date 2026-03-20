@@ -95,6 +95,19 @@ export async function createOrder(
   return res.json();
 }
 
+export async function fetchItem(id: string): Promise<Record<string, unknown>> {
+  const res: Response = await fetch(`${API_BASE}/items/${id}`, {
+    headers: getHeaders(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amplifier item fetch failed: ${res.status} ${text}`);
+  }
+
+  return res.json();
+}
+
 export interface AmplifierShipment {
   id: string;
   order_source_code: string;

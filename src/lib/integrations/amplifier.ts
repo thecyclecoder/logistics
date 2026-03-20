@@ -95,7 +95,78 @@ export async function createOrder(
   return res.json();
 }
 
-export async function fetchItem(id: string): Promise<Record<string, unknown>> {
+export interface AmplifierItem {
+  id: string;
+  sku: string;
+  name: string;
+  description: string;
+  upc: string | null;
+  category: string | null;
+  cost: number | null;
+  retail_price: number | null;
+  weight: number;
+  discontinued: boolean;
+  made_to_order: boolean;
+  status: string;
+  inventory: {
+    quantity_available: number;
+    quantity_on_hand: number;
+    quantity_committed: number;
+    quantity_on_order: number;
+  };
+}
+
+export interface AmplifierListResponse {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+  data: AmplifierItem[];
+}
+
+export async function listItems(params?: {
+  query?: string;
+  sku?: string;
+  name?: string;
+  discontinued?: boolean;
+  page?: number;
+  per_page?: number;
+}): Promise<AmplifierListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.query) qs.set("query", params.query);
+  if (params?.sku) qs.set("sku", params.sku);
+  if (params?.name) qs.set("name", params.name);
+  if (params?.discontinued !== undefined) qs.set("discontinued", String(params.discontinued));
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.per_page) qs.set("per_page", String(params.per_page));
+
+  const res: Response = await fetch(`${API_BASE}/items/?${qs}`, {
+    headers: getHeaders(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amplifier list items failed: ${res.status} ${text}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchAllItems(): Promise<AmplifierItem[]> {
+  const allItems: AmplifierItem[] = [];
+  let page = 1;
+
+  while (true) {
+    const result = await listItems({ page, per_page: 50 });
+    allItems.push(...result.data);
+    if (page >= result.total_pages) break;
+    page++;
+  }
+
+  return allItems;
+}
+
+export async function fetchItem(id: string): Promise<AmplifierItem> {
   const res: Response = await fetch(`${API_BASE}/items/${id}`, {
     headers: getHeaders(),
   });

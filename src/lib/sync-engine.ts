@@ -56,6 +56,23 @@ async function resolveProductByMapping(
   return data?.product_id || null;
 }
 
+async function trackUnmappedSku(
+  externalId: string,
+  source: string
+): Promise<void> {
+  if (!externalId) return;
+  const supabase = createServiceClient();
+  await supabase.from("unmapped_skus").upsert(
+    {
+      external_id: externalId,
+      source,
+      last_seen_at: new Date().toISOString(),
+      dismissed: false,
+    },
+    { onConflict: "external_id,source" }
+  );
+}
+
 export async function syncQBProducts(): Promise<SyncResult> {
   const logId = await startLog("syncQBProducts");
   try {
@@ -169,7 +186,13 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
         (await resolveProductByMapping(s.asin, "amazon")) ||
         (await resolveProductByMapping(s.sellerSku, "amazon"));
 
-      if (!productId) continue;
+      if (!productId) {
+        await trackUnmappedSku(s.asin, "amazon");
+        if (s.sellerSku !== s.asin) {
+          await trackUnmappedSku(s.sellerSku, "amazon");
+        }
+        continue;
+      }
 
       await supabase.from("inventory_snapshots").insert({
         product_id: productId,
@@ -204,7 +227,10 @@ export async function sync3PLInventory(): Promise<SyncResult> {
 
     for (const item of items) {
       const productId = await resolveProductByMapping(item.sku, "3pl");
-      if (!productId) continue;
+      if (!productId) {
+        await trackUnmappedSku(item.sku, "3pl");
+        continue;
+      }
 
       await supabase.from("inventory_snapshots").insert({
         product_id: productId,
@@ -262,7 +288,10 @@ export async function syncAmazonSales(
         const productId =
           (await resolveProductByMapping(item.ASIN, "amazon")) ||
           (await resolveProductByMapping(item.SellerSKU, "amazon"));
-        if (!productId) continue;
+        if (!productId) {
+          await trackUnmappedSku(item.ASIN, "amazon");
+          continue;
+        }
 
         const gross = parseAmount(item.ItemPrice);
         const fees = parseAmount(item.ItemTax);
@@ -330,7 +359,10 @@ export async function syncShopifySales(
         if (!item.sku) continue;
 
         const productId = await resolveProductByMapping(item.sku, "shopify");
-        if (!productId) continue;
+        if (!productId) {
+          await trackUnmappedSku(item.sku, "shopify");
+          continue;
+        }
 
         const { data: existing } = await supabase
           .from("sale_records")

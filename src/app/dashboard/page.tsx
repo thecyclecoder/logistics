@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import StatCard from "@/components/stat-card";
 import SyncButton from "@/components/sync-button";
 import RevenueChart from "@/components/revenue-chart";
+import UnmappedAlert from "@/components/unmapped-alert";
 import { Package, DollarSign, ShoppingCart, Boxes, AlertTriangle, Clock } from "lucide-react";
 import type { CronLog, CurrentInventory } from "@/lib/types/database";
 
@@ -64,6 +65,9 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold text-gray-900">Overview</h1>
         <SyncButton />
       </div>
+
+      {/* Unmapped SKU Alert */}
+      <UnmappedAlert />
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

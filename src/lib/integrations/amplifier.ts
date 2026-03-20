@@ -94,3 +94,40 @@ export async function createOrder(
 
   return res.json();
 }
+
+export interface AmplifierShipment {
+  id: string;
+  order_source_code: string;
+  order_reference_id: string;
+  tracking_number: string;
+  shipping_method: string;
+  ship_date: string;
+  items: Array<{
+    order_line_item_reference_id?: string;
+    sku: string;
+    quantity: number;
+  }>;
+}
+
+export async function fetchShipmentsByDate(
+  date: Date
+): Promise<AmplifierShipment[]> {
+  const dateStr = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("");
+
+  const res: Response = await fetch(
+    `${API_BASE}/reports/shipments/${dateStr}`,
+    { headers: getHeaders() }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Amplifier shipments fetch failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  return data.shipments || [];
+}

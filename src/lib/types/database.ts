@@ -18,6 +18,7 @@ export interface Product {
   item_type: ItemType;
   bundle_id: string | null;
   bundle_quantity: number | null;
+  product_category: "finished_good" | "component" | null;
   created_at: string;
   updated_at: string;
 }

@@ -14,6 +14,12 @@ function classifyProduct(
   p: Product,
   componentIds: Set<string>
 ): ProductCategory {
+  // Explicit override takes priority
+  if (p.product_category === "component") return "component";
+  if (p.product_category === "finished_good") {
+    return p.item_type === "bundle" ? "finished_good" : "finished_good_no_bom";
+  }
+  // Auto-detect
   if (p.item_type === "bundle") return "finished_good";
   if (componentIds.has(p.id)) return "component";
   return "finished_good_no_bom";
@@ -56,12 +62,14 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
     return map;
   }, [products]);
 
-  const finishedGoods = products.filter((p) => p.item_type === "bundle");
+  const finishedGoods = products.filter(
+    (p) => classifyProduct(p, componentIds) === "finished_good"
+  );
   const standaloneFinished = products.filter(
-    (p) => p.item_type === "inventory" && !componentIds.has(p.id)
+    (p) => classifyProduct(p, componentIds) === "finished_good_no_bom"
   );
   const rawMaterials = products.filter(
-    (p) => p.item_type === "inventory" && componentIds.has(p.id)
+    (p) => classifyProduct(p, componentIds) === "component"
   );
 
   const handleRecategorize = useCallback(async (
@@ -71,20 +79,13 @@ export default function ProductsClient({ initialProducts }: ProductsClientProps)
     setSaving(true);
     setEditingId(null);
     try {
-      let updates: Record<string, unknown> = {};
-
-      if (newCategory === "finished_good") {
-        updates = { item_type: "bundle", bundle_id: null, bundle_quantity: null };
-      } else if (newCategory === "component") {
-        updates = { item_type: "inventory" };
-      } else {
-        updates = { item_type: "inventory", bundle_id: null, bundle_quantity: null };
-      }
+      const productCategory =
+        newCategory === "component" ? "component" : "finished_good";
 
       const res = await fetch(`/api/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ product_category: productCategory }),
       });
 
       if (res.ok) {

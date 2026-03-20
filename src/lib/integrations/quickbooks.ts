@@ -1,10 +1,52 @@
+import { createServiceClient } from "@/lib/supabase/server";
+
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const QB_TOKENS_TABLE = "qb_tokens";
 
 let cachedToken: { access_token: string; expires_at: number } | null = null;
+
+async function getStoredRefreshToken(): Promise<string | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data } = await supabase
+      .from(QB_TOKENS_TABLE)
+      .select("refresh_token")
+      .eq("id", "current")
+      .single();
+    return data?.refresh_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeRefreshToken(refreshToken: string): Promise<void> {
+  try {
+    const supabase = createServiceClient();
+    await supabase
+      .from(QB_TOKENS_TABLE)
+      .upsert({
+        id: "current",
+        refresh_token: refreshToken,
+        updated_at: new Date().toISOString(),
+      });
+  } catch (err) {
+    console.error("Failed to store QB refresh token:", err);
+  }
+}
 
 async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expires_at - 60_000) {
     return cachedToken.access_token;
+  }
+
+  // Try DB-stored token first, fall back to env var
+  const refreshToken =
+    (await getStoredRefreshToken()) || process.env.QB_REFRESH_TOKEN;
+
+  if (!refreshToken) {
+    throw new Error(
+      "No QB refresh token available. Connect QuickBooks at /api/qb/connect"
+    );
   }
 
   const basicAuth = Buffer.from(
@@ -19,13 +61,15 @@ async function getAccessToken(): Promise<string> {
     },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: process.env.QB_REFRESH_TOKEN!,
+      refresh_token: refreshToken,
     }),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`QB token refresh failed: ${res.status} ${text}`);
+    throw new Error(
+      `QB token refresh failed (${res.status}): ${text}. Re-authorize at /api/qb/connect`
+    );
   }
 
   const data = await res.json();
@@ -33,6 +77,12 @@ async function getAccessToken(): Promise<string> {
     access_token: data.access_token,
     expires_at: Date.now() + data.expires_in * 1000,
   };
+
+  // QB issues a new refresh token on every refresh — store it
+  if (data.refresh_token) {
+    await storeRefreshToken(data.refresh_token);
+  }
+
   return data.access_token;
 }
 

@@ -182,6 +182,24 @@ export async function syncQBProducts(): Promise<SyncResult> {
   }
 }
 
+async function cacheExternalSku(
+  externalId: string,
+  source: string,
+  label?: string
+): Promise<void> {
+  if (!externalId) return;
+  const supabase = createServiceClient();
+  await supabase.from("external_skus").upsert(
+    {
+      external_id: externalId,
+      source,
+      label: label || null,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "external_id,source" }
+  );
+}
+
 export async function syncAmazonInventory(): Promise<SyncResult> {
   const logId = await startLog("syncAmazonInventory");
   try {
@@ -190,6 +208,12 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
     let count = 0;
 
     for (const s of summaries) {
+      // Cache all ASINs and seller SKUs for the mapping dropdown
+      await cacheExternalSku(s.asin, "amazon", `ASIN: ${s.asin}`);
+      if (s.sellerSku && s.sellerSku !== s.asin) {
+        await cacheExternalSku(s.sellerSku, "amazon", `Seller SKU: ${s.sellerSku}`);
+      }
+
       // Try to resolve by ASIN first, then sellerSku
       const productId =
         (await resolveProductByMapping(s.asin, "amazon")) ||
@@ -235,6 +259,9 @@ export async function sync3PLInventory(): Promise<SyncResult> {
     let count = 0;
 
     for (const item of items) {
+      // Cache all 3PL SKUs for the mapping dropdown
+      await cacheExternalSku(item.sku, "3pl", item.sku);
+
       const productId = await resolveProductByMapping(item.sku, "3pl");
       if (!productId) {
         await trackUnmappedSku(item.sku, "3pl");

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  syncQBProducts,
   syncAmazonInventory,
   sync3PLInventory,
 } from "@/lib/sync-engine";
@@ -12,7 +11,6 @@ export async function GET(request: NextRequest) {
   }
 
   const results = await Promise.allSettled([
-    syncQBProducts(),
     syncAmazonInventory(),
     sync3PLInventory(),
   ]);

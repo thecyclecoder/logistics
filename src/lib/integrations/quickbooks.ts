@@ -5,17 +5,23 @@ const QB_TOKENS_TABLE = "qb_tokens";
 
 let cachedToken: { access_token: string; expires_at: number } | null = null;
 
-async function getStoredRefreshToken(): Promise<string | null> {
+async function getStoredTokens(): Promise<{
+  refresh_token: string | null;
+  realm_id: string | null;
+}> {
   try {
     const supabase = createServiceClient();
     const { data } = await supabase
       .from(QB_TOKENS_TABLE)
-      .select("refresh_token")
+      .select("refresh_token, realm_id")
       .eq("id", "current")
       .single();
-    return data?.refresh_token || null;
+    return {
+      refresh_token: data?.refresh_token || null,
+      realm_id: data?.realm_id || null,
+    };
   } catch {
-    return null;
+    return { refresh_token: null, realm_id: null };
   }
 }
 
@@ -40,8 +46,8 @@ async function getAccessToken(): Promise<string> {
   }
 
   // Try DB-stored token first, fall back to env var
-  const refreshToken =
-    (await getStoredRefreshToken()) || process.env.QB_REFRESH_TOKEN;
+  const stored = await getStoredTokens();
+  const refreshToken = stored.refresh_token || process.env.QB_REFRESH_TOKEN;
 
   if (!refreshToken) {
     throw new Error(
@@ -106,7 +112,11 @@ export interface QBItem {
 
 export async function fetchInventoryItems(): Promise<QBItem[]> {
   const token = await getAccessToken();
-  const realmId = process.env.QB_REALM_ID!;
+  const stored = await getStoredTokens();
+  const realmId = stored.realm_id || process.env.QB_REALM_ID;
+  if (!realmId) {
+    throw new Error("No QB Realm ID. Connect QuickBooks at /api/qb/connect");
+  }
   const items: QBItem[] = [];
   let startPosition = 1;
   const maxResults = 1000;

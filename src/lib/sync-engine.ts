@@ -334,9 +334,24 @@ export async function syncShopifySales(
   }
 }
 
+// QB-only sync — manual trigger only (month-end closing)
+export async function syncQB(): Promise<SyncResult[]> {
+  const results = await Promise.allSettled([syncQBProducts()]);
+  return results.map((r) =>
+    r.status === "fulfilled"
+      ? r.value
+      : {
+          job: "syncQBProducts",
+          status: "error" as const,
+          records: 0,
+          error: r.reason?.message || String(r.reason),
+        }
+  );
+}
+
+// Automated sync — excludes QB (QB requires manual trigger)
 export async function syncAll(): Promise<SyncResult[]> {
   const results = await Promise.allSettled([
-    syncQBProducts(),
     syncAmazonInventory(),
     sync3PLInventory(),
     syncAmazonSales(0),

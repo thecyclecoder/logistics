@@ -3,6 +3,8 @@ export type InventorySource = "amazon_fba" | "amazon_fbm" | "3pl" | "quickbooks"
 export type Channel = "amazon" | "shopify";
 export type CronStatus = "running" | "success" | "error";
 
+export type ItemType = "inventory" | "bundle";
+
 export interface Product {
   id: string;
   quickbooks_id: string;
@@ -13,6 +15,9 @@ export interface Product {
   reorder_point: number;
   lead_time_days: number | null;
   active: boolean;
+  item_type: ItemType;
+  bundle_id: string | null;
+  bundle_quantity: number | null;
   created_at: string;
   updated_at: string;
 }

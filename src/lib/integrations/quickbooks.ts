@@ -98,6 +98,11 @@ function baseUrl(): string {
     : "https://sandbox-quickbooks.api.intuit.com";
 }
 
+export interface QBGroupLine {
+  ItemRef: { value: string; name: string; type: string };
+  Qty: number;
+}
+
 export interface QBItem {
   Id: string;
   Name: string;
@@ -106,24 +111,35 @@ export interface QBItem {
   QtyOnHand?: number;
   UnitPrice?: number;
   Active: boolean;
+  ItemGroupDetail?: {
+    ItemGroupLine: QBGroupLine[];
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
-export async function fetchInventoryItems(): Promise<QBItem[]> {
+async function getRealmAndToken(): Promise<{ token: string; realmId: string }> {
   const token = await getAccessToken();
   const stored = await getStoredTokens();
   const realmId = stored.realm_id || process.env.QB_REALM_ID;
   if (!realmId) {
     throw new Error("No QB Realm ID. Connect QuickBooks at /api/qb/connect");
   }
+  return { token, realmId };
+}
+
+async function queryItems(
+  token: string,
+  realmId: string,
+  typeFilter: string
+): Promise<QBItem[]> {
   const items: QBItem[] = [];
   let startPosition = 1;
   const maxResults = 1000;
 
   while (true) {
     const query = encodeURIComponent(
-      `SELECT * FROM Item WHERE Type = 'Inventory' STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+      `SELECT * FROM Item WHERE Type = '${typeFilter}' STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
     );
 
     const res = await fetch(
@@ -142,8 +158,7 @@ export async function fetchInventoryItems(): Promise<QBItem[]> {
     }
 
     const data = await res.json();
-    const queryResponse = data.QueryResponse;
-    const batch: QBItem[] = queryResponse?.Item || [];
+    const batch: QBItem[] = data.QueryResponse?.Item || [];
     items.push(...batch);
 
     if (batch.length < maxResults) break;
@@ -151,4 +166,67 @@ export async function fetchInventoryItems(): Promise<QBItem[]> {
   }
 
   return items;
+}
+
+export async function fetchItemById(
+  token: string,
+  realmId: string,
+  itemId: string
+): Promise<QBItem> {
+  const res = await fetch(
+    `${baseUrl()}/v3/company/${realmId}/item/${itemId}?minorversion=65`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`QB item fetch failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  return data.Item;
+}
+
+export async function fetchInventoryItems(): Promise<QBItem[]> {
+  const { token, realmId } = await getRealmAndToken();
+  return queryItems(token, realmId, "Inventory");
+}
+
+export async function fetchGroupItems(): Promise<QBItem[]> {
+  const { token, realmId } = await getRealmAndToken();
+  const groups = await queryItems(token, realmId, "Group");
+
+  // Fetch full details for each group to get ItemGroupDetail
+  const detailed: QBItem[] = [];
+  for (const group of groups) {
+    const full = await fetchItemById(token, realmId, group.Id);
+    detailed.push(full);
+  }
+
+  return detailed;
+}
+
+export async function fetchAllItems(): Promise<{
+  inventory: QBItem[];
+  groups: QBItem[];
+}> {
+  const { token, realmId } = await getRealmAndToken();
+  const [inventory, groupSparse] = await Promise.all([
+    queryItems(token, realmId, "Inventory"),
+    queryItems(token, realmId, "Group"),
+  ]);
+
+  // Fetch full details for groups to get component items
+  const groups: QBItem[] = [];
+  for (const group of groupSparse) {
+    const full = await fetchItemById(token, realmId, group.Id);
+    groups.push(full);
+  }
+
+  return { inventory, groups };
 }

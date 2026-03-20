@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard,
   Package,
+  Layers,
   DollarSign,
   Link2,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/products", label: "Products", icon: Layers },
   { href: "/dashboard/inventory", label: "Inventory", icon: Package },
   { href: "/dashboard/sales", label: "Sales", icon: DollarSign },
   { href: "/dashboard/mapping", label: "SKU Mapping", icon: Link2 },

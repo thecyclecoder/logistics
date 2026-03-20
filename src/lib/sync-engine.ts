@@ -59,11 +59,12 @@ async function resolveProductByMapping(
 export async function syncQBProducts(): Promise<SyncResult> {
   const logId = await startLog("syncQBProducts");
   try {
-    const items = await qb.fetchInventoryItems();
+    const { inventory, groups } = await qb.fetchAllItems();
     const supabase = createServiceClient();
     let count = 0;
 
-    for (const item of items) {
+    // 1. Upsert inventory items
+    for (const item of inventory) {
       const { error } = await supabase
         .from("products")
         .upsert(
@@ -73,6 +74,7 @@ export async function syncQBProducts(): Promise<SyncResult> {
             sku: item.Sku || null,
             unit_cost: item.UnitPrice || null,
             active: item.Active,
+            item_type: "inventory",
           },
           { onConflict: "quickbooks_id" }
         );
@@ -82,7 +84,6 @@ export async function syncQBProducts(): Promise<SyncResult> {
         continue;
       }
 
-      // Get the product id for snapshot
       const { data: product } = await supabase
         .from("products")
         .select("id")
@@ -96,6 +97,51 @@ export async function syncQBProducts(): Promise<SyncResult> {
           quantity: Math.floor(item.QtyOnHand),
           raw_payload: item,
         });
+      }
+
+      count++;
+    }
+
+    // 2. Upsert group/bundle items
+    for (const group of groups) {
+      const { error } = await supabase
+        .from("products")
+        .upsert(
+          {
+            quickbooks_id: group.Id,
+            quickbooks_name: group.Name,
+            sku: group.Sku || null,
+            unit_cost: group.UnitPrice || null,
+            active: group.Active,
+            item_type: "bundle",
+          },
+          { onConflict: "quickbooks_id" }
+        );
+
+      if (error) {
+        console.error(`Failed to upsert bundle ${group.Id}:`, error.message);
+        continue;
+      }
+
+      // Get the bundle's product id
+      const { data: bundleProduct } = await supabase
+        .from("products")
+        .select("id")
+        .eq("quickbooks_id", group.Id)
+        .single();
+
+      if (!bundleProduct) continue;
+
+      // Link component items to this bundle
+      const lines = group.ItemGroupDetail?.ItemGroupLine || [];
+      for (const line of lines) {
+        await supabase
+          .from("products")
+          .update({
+            bundle_id: bundleProduct.id,
+            bundle_quantity: line.Qty,
+          })
+          .eq("quickbooks_id", line.ItemRef.value);
       }
 
       count++;

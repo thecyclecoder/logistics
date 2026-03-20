@@ -441,8 +441,6 @@ export async function syncAll(): Promise<SyncResult[]> {
   const results = await Promise.allSettled([
     syncAmazonInventory(),
     sync3PLInventory(),
-    syncAmazonSales(0),
-    syncShopifySales(0),
   ]);
 
   return results.map((r) =>

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncAmazonSales, syncShopifySales } from "@/lib/sync-engine";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -7,14 +6,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const results = await Promise.allSettled([
-    syncAmazonSales(0),
-    syncShopifySales(0),
-  ]);
-
-  return NextResponse.json({
-    results: results.map((r) =>
-      r.status === "fulfilled" ? r.value : { error: r.reason?.message }
-    ),
-  });
+  // Sales syncs disabled until Amazon and Shopify are fully configured
+  return NextResponse.json({ results: [], message: "Sales syncs not yet enabled" });
 }

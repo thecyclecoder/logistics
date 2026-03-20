@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, BookOpen } from "lucide-react";
+import { RefreshCw, BookOpen, CheckCircle2, AlertTriangle } from "lucide-react";
 
 export default function SyncButton() {
   const [loading, setLoading] = useState(false);
   const [qbLoading, setQbLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    message: string;
+    type: "success" | "warning" | "error";
+  } | null>(null);
 
   const handleSync = async () => {
     setLoading(true);
@@ -15,15 +18,27 @@ export default function SyncButton() {
       const res = await fetch("/api/sync/all", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        const successes = data.results.filter(
-          (r: { status: string }) => r.status === "success"
-        ).length;
-        setResult(`Sync complete: ${successes}/${data.results.length} jobs succeeded`);
+        // Check for unmapped SKUs
+        const unmappedRes = await fetch("/api/unmapped-skus");
+        const unmapped = await unmappedRes.json();
+        const unmappedCount = Array.isArray(unmapped) ? unmapped.length : 0;
+
+        if (unmappedCount > 0) {
+          setResult({
+            message: `Inventory synced — ${unmappedCount} unmapped SKU${unmappedCount !== 1 ? "s" : ""} found. Map them to track inventory.`,
+            type: "warning",
+          });
+        } else {
+          setResult({
+            message: "Inventory synced — all products mapped",
+            type: "success",
+          });
+        }
       } else {
-        setResult(`Error: ${data.error}`);
+        setResult({ message: `Error: ${data.error}`, type: "error" });
       }
     } catch {
-      setResult("Sync request failed");
+      setResult({ message: "Sync request failed", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -39,14 +54,14 @@ export default function SyncButton() {
         const r = data.results[0];
         setResult(
           r.status === "success"
-            ? `QuickBooks synced: ${r.records} products updated`
-            : `QB sync error: ${r.error}`
+            ? { message: `QuickBooks synced: ${r.records} products updated`, type: "success" }
+            : { message: `QB sync error: ${r.error}`, type: "error" }
         );
       } else {
-        setResult(`Error: ${data.error}`);
+        setResult({ message: `Error: ${data.error}`, type: "error" });
       }
     } catch {
-      setResult("QB sync request failed");
+      setResult({ message: "QB sync request failed", type: "error" });
     } finally {
       setQbLoading(false);
     }
@@ -63,7 +78,7 @@ export default function SyncButton() {
           className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {loading ? "Syncing..." : "Sync Now"}
+          {loading ? "Syncing..." : "Sync Inventory"}
         </button>
         <button
           onClick={handleQBSync}
@@ -75,7 +90,20 @@ export default function SyncButton() {
         </button>
       </div>
       {result && (
-        <p className="mt-2 text-sm text-gray-600">{result}</p>
+        <div className={`mt-2 flex items-center gap-1.5 text-sm ${
+          result.type === "success"
+            ? "text-green-700"
+            : result.type === "warning"
+              ? "text-amber-700"
+              : "text-red-700"
+        }`}>
+          {result.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <AlertTriangle className="h-4 w-4" />
+          )}
+          {result.message}
+        </div>
       )}
     </div>
   );

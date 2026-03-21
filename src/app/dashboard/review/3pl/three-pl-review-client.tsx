@@ -8,6 +8,7 @@ interface ExternalSku {
   external_id: string;
   source: string;
   label: string | null;
+  title: string | null;
   quantity: number | null;
   dismissed: boolean;
   mapped: boolean;
@@ -40,7 +41,11 @@ export default function ThreePLReviewClient() {
 
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter((s) => s.external_id.toLowerCase().includes(q));
+      list = list.filter(
+        (s) =>
+          s.external_id.toLowerCase().includes(q) ||
+          s.title?.toLowerCase().includes(q)
+      );
     }
 
     return list.sort((a, b) => (b.quantity ?? 0) - (a.quantity ?? 0));
@@ -159,6 +164,7 @@ export default function ThreePLReviewClient() {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="px-4 py-3 text-left font-medium text-gray-500">SKU</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Available</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Action</th>
@@ -167,7 +173,7 @@ export default function ThreePLReviewClient() {
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
                     {filter === "unmapped"
                       ? "All 3PL SKUs have been reviewed!"
                       : "No SKUs match your filter."}
@@ -178,6 +184,9 @@ export default function ThreePLReviewClient() {
                   <tr key={sku.id} className={`hover:bg-gray-50 ${sku.dismissed ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3 font-mono text-sm text-gray-900">
                       {sku.external_id}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
+                      {sku.title || "—"}
                     </td>
                     <td className={`px-4 py-3 text-right font-medium ${
                       (sku.quantity ?? 0) === 0 ? "text-gray-300" : "text-gray-900"

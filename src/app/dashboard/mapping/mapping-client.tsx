@@ -536,7 +536,7 @@ export default function MappingClient({
                                   m.source === sku.source &&
                                   m.product_id === selectedProductId
                               );
-                              const hasRichData = sku.source === "amazon" && sku.title;
+                              const hasRichData = !!sku.title;
                               return (
                                 <button
                                   key={`${sku.external_id}-${sku.source}`}

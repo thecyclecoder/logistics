@@ -290,10 +290,16 @@ export async function sync3PLInventory(): Promise<SyncResult> {
     const supabase = createServiceClient();
     let count = 0;
 
+    // Fetch all items from Amplifier catalog to get names
+    const catalogItems = await amplifier.fetchAllItems();
+    const nameMap = new Map(catalogItems.map((ci) => [ci.sku, ci.name]));
+
     for (const item of items) {
-      // Cache all 3PL SKUs for the mapping dropdown with quantity
+      // Cache all 3PL SKUs for the mapping dropdown with quantity + name
+      const itemName = nameMap.get(item.sku);
       await cacheExternalSku(item.sku, "3pl", {
         label: item.sku,
+        title: itemName || undefined,
         quantity: item.quantity_available,
       });
 

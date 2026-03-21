@@ -91,7 +91,7 @@ export async function GET() {
     .limit(1)
     .single();
 
-  let fbaByAsin = new Map<string, number>();
+  const fbaByAsin = new Map<string, number>();
   if (latestFbaDate) {
     const { data: fbaSnaps } = await supabase
       .from("amazon_inventory_snapshots")
@@ -110,7 +110,7 @@ export async function GET() {
     .limit(1)
     .single();
 
-  let tplBySku = new Map<string, number>();
+  const tplBySku = new Map<string, number>();
   if (latestTplDate) {
     const { data: tplSnaps } = await supabase
       .from("tpl_inventory_snapshots")

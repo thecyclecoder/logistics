@@ -29,13 +29,30 @@ async function getStoredTokens(): Promise<{
 async function storeRefreshToken(refreshToken: string): Promise<void> {
   try {
     const supabase = createServiceClient();
-    await supabase
+    // Update only refresh_token and updated_at, preserve realm_id
+    const { data: existing } = await supabase
       .from(QB_TOKENS_TABLE)
-      .upsert({
-        id: "current",
-        refresh_token: refreshToken,
-        updated_at: new Date().toISOString(),
-      });
+      .select("id")
+      .eq("id", "current")
+      .single();
+
+    if (existing) {
+      await supabase
+        .from(QB_TOKENS_TABLE)
+        .update({
+          refresh_token: refreshToken,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "current");
+    } else {
+      await supabase
+        .from(QB_TOKENS_TABLE)
+        .insert({
+          id: "current",
+          refresh_token: refreshToken,
+          updated_at: new Date().toISOString(),
+        });
+    }
   } catch (err) {
     console.error("Failed to store QB refresh token:", err);
   }

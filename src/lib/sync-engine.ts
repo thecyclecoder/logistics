@@ -259,6 +259,20 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
         seller_sku: s.sellerSku,
       });
 
+      // Write daily FBA inventory snapshot
+      await supabase.from("amazon_inventory_snapshots").upsert(
+        {
+          asin: s.asin,
+          seller_sku: s.sellerSku,
+          fn_sku: s.fnSku,
+          quantity_fulfillable: s.totalFulfillableQuantity,
+          quantity_inbound: (s.inventoryDetails as Record<string, number> | undefined)?.inboundWorkingQuantity || 0,
+          quantity_reserved: (s.inventoryDetails as Record<string, number> | undefined)?.reservedQuantity || 0,
+          snapshot_date: new Date().toISOString().split("T")[0],
+        },
+        { onConflict: "asin,snapshot_date" }
+      );
+
       // Try to resolve by ASIN first, then sellerSku
       const productId =
         (await resolveProductByMapping(s.asin, "amazon")) ||

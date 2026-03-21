@@ -501,6 +501,31 @@ export async function syncShopifySales(
   }
 }
 
+export async function syncShopifyProducts(): Promise<SyncResult> {
+  const logId = await startLog("syncShopifyProducts");
+  try {
+    const items = await shopify.fetchProductsWithVariants();
+    let count = 0;
+
+    for (const item of items) {
+      await cacheExternalSku(item.variant.sku, "shopify", {
+        title: item.productTitle,
+        image_url: item.productImage || undefined,
+        price: item.variant.price ? parseFloat(item.variant.price) : undefined,
+        quantity: item.variant.inventory_quantity,
+      });
+      count++;
+    }
+
+    await finishLog(logId, "success", count);
+    return { job: "syncShopifyProducts", status: "success", records: count };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await finishLog(logId, "error", 0, msg);
+    return { job: "syncShopifyProducts", status: "error", records: 0, error: msg };
+  }
+}
+
 // QB-only sync — manual trigger only (month-end closing)
 export async function syncQB(): Promise<SyncResult[]> {
   const results = await Promise.allSettled([syncQBProducts()]);

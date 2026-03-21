@@ -112,14 +112,21 @@ export interface ShopifyVariant {
   sku: string;
   title: string;
   inventory_quantity: number;
+  price: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
-export async function fetchProductVariants(): Promise<ShopifyVariant[]> {
+export interface ShopifyProductWithVariants {
+  productTitle: string;
+  productImage: string | null;
+  variant: ShopifyVariant;
+}
+
+export async function fetchProductsWithVariants(): Promise<ShopifyProductWithVariants[]> {
   const creds = await getCredentials();
-  const variants: ShopifyVariant[] = [];
-  let url: string | null = shopifyUrl(creds.domain, `/products.json?limit=250`);
+  const results: ShopifyProductWithVariants[] = [];
+  let url: string | null = shopifyUrl(creds.domain, `/products.json?limit=250&fields=id,title,variants,images`);
 
   while (url) {
     const res: Response = await fetch(url, { headers: getHeaders(creds.token) });
@@ -131,7 +138,18 @@ export async function fetchProductVariants(): Promise<ShopifyVariant[]> {
 
     const data = await res.json();
     for (const product of data.products || []) {
-      variants.push(...(product.variants || []));
+      const imageUrl = product.images?.[0]?.src || null;
+      for (const variant of product.variants || []) {
+        if (!variant.sku) continue;
+        const variantTitle = variant.title === "Default Title"
+          ? product.title
+          : `${product.title} - ${variant.title}`;
+        results.push({
+          productTitle: variantTitle,
+          productImage: imageUrl,
+          variant,
+        });
+      }
     }
 
     const linkHeader = res.headers.get("link");
@@ -142,5 +160,5 @@ export async function fetchProductVariants(): Promise<ShopifyVariant[]> {
     }
   }
 
-  return variants;
+  return results;
 }

@@ -95,8 +95,23 @@ All tables have RLS enabled. Migrations in `supabase/migrations/`.
 - `GET /api/shopify/callback` — Shopify OAuth callback
 - `GET /auth/callback` — Supabase Google OAuth callback
 
+## Pre-Push Checklist (MANDATORY)
+Every change must go through this sequence before considering it done:
+1. **TypeScript check**: `npx tsc --noEmit` — fix all type errors
+2. **Lint + Build**: `npm run build` — this runs ESLint and builds. Fix all lint errors (unused vars, imports, etc.)
+3. **Commit & Push**: `git add`, `git commit`, `git push origin main`
+4. **Verify deployment**: `sleep 60 && vercel ls` — confirm the latest deploy status is "Ready"
+5. **If deploy fails**: check logs with `vercel inspect <url> --logs`, fix issues, re-push, and repeat from step 1
+
+Common gotchas:
+- Unused variables/imports cause ESLint errors that fail the Vercel build
+- `[...new Set()]` doesn't work — use `Array.from(new Set())`
+- Supabase `qb_tokens` and `shopify_tokens` tables require `createServiceClient()` (service role) not `createClient()` (user session) due to RLS
+- Shopify/QB OAuth redirect URIs must use `NEXT_PUBLIC_SITE_URL` or hardcoded production domain, NOT `request.url` (Vercel deployment URLs don't match app config)
+
 ## Development Notes
 - Data fetching in server components where possible, client components only for interactivity
 - `revalidate = 60` on dashboard pages, `revalidate = 0` on mapping and products pages
 - All monetary values stored as `numeric(12,4)` in Postgres
 - QB refresh tokens auto-rotate and are stored in `qb_tokens` table
+- Shopify tokens stored in `shopify_tokens` table (shop_domain + access_token)

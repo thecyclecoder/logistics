@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
   const shop = "superfoodsco.myshopify.com";
   const clientId = process.env.SHOPIFY_CLIENT_ID!;

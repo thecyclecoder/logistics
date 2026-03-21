@@ -24,6 +24,11 @@ interface ExternalSku {
   external_id: string;
   source: string;
   label: string | null;
+  title: string | null;
+  image_url: string | null;
+  price: number | null;
+  parent_asin: string | null;
+  item_type: string | null;
   mapped: boolean;
   mapped_to: string | null;
 }
@@ -125,7 +130,8 @@ export default function MappingClient({
       list = list.filter(
         (s) =>
           s.external_id.toLowerCase().includes(q) ||
-          s.label?.toLowerCase().includes(q)
+          s.label?.toLowerCase().includes(q) ||
+          s.title?.toLowerCase().includes(q)
       );
     }
     return list;
@@ -530,6 +536,7 @@ export default function MappingClient({
                                   m.source === sku.source &&
                                   m.product_id === selectedProductId
                               );
+                              const hasRichData = sku.source === "amazon" && sku.title;
                               return (
                                 <button
                                   key={`${sku.external_id}-${sku.source}`}
@@ -539,7 +546,7 @@ export default function MappingClient({
                                     }
                                   }}
                                   disabled={alreadyMapped || saving}
-                                  className={`w-full text-left px-3 py-2 text-sm border-b border-gray-50 last:border-0 flex items-center gap-2 ${
+                                  className={`w-full text-left px-3 py-2.5 text-sm border-b border-gray-50 last:border-0 flex items-center gap-3 ${
                                     alreadyMapped
                                       ? "bg-green-50 text-green-700"
                                       : sku.mapped
@@ -547,18 +554,48 @@ export default function MappingClient({
                                         : "hover:bg-brand-50"
                                   }`}
                                 >
-                                  <span className="font-mono flex-1 truncate">
-                                    {sku.external_id}
-                                  </span>
-                                  {sku.label && sku.label !== sku.external_id && (
-                                    <span className="text-xs text-gray-400 truncate max-w-32">
-                                      {sku.label}
-                                    </span>
-                                  )}
+                                  {/* Product image for Amazon */}
+                                  {hasRichData && sku.image_url ? (
+                                    <img
+                                      src={sku.image_url}
+                                      alt=""
+                                      className="h-10 w-10 rounded-md object-contain bg-white border border-gray-100 flex-shrink-0"
+                                    />
+                                  ) : hasRichData ? (
+                                    <div className="h-10 w-10 rounded-md bg-gray-100 flex-shrink-0" />
+                                  ) : null}
+                                  <div className="flex-1 min-w-0">
+                                    {hasRichData ? (
+                                      <>
+                                        <p className="text-xs font-medium text-gray-900 truncate">
+                                          {sku.title}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                          <span className="font-mono text-xs text-gray-500">
+                                            {sku.external_id}
+                                          </span>
+                                          {sku.label && (
+                                            <span className="text-xs text-gray-400">
+                                              {sku.label}
+                                            </span>
+                                          )}
+                                          {sku.price && (
+                                            <span className="text-xs text-gray-400">
+                                              ${sku.price.toFixed(2)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="font-mono truncate text-gray-900">
+                                        {sku.external_id}
+                                      </span>
+                                    )}
+                                  </div>
                                   {alreadyMapped ? (
                                     <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
                                   ) : sku.mapped ? (
-                                    <span className="text-xs text-gray-400 flex-shrink-0">
+                                    <span className="text-xs text-gray-400 flex-shrink-0 max-w-20 truncate">
                                       → {sku.mapped_to}
                                     </span>
                                   ) : (

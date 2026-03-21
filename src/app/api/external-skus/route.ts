@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const supabase = createServiceClient();
   let query = supabase
     .from("external_skus")
-    .select("external_id, source, label")
+    .select("external_id, source, label, title, image_url, price, parent_asin, item_type")
     .order("external_id");
 
   if (source) {

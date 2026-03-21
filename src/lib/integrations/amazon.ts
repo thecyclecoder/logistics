@@ -191,3 +191,88 @@ export async function fetchOrderItems(
 
   return items;
 }
+
+export interface CatalogItem {
+  asin: string;
+  title: string;
+  imageUrl: string | null;
+  price: number | null;
+  parentAsin: string | null;
+  classification: "VARIATION_CHILD" | "VARIATION_PARENT" | "SELF_PUBLISHED" | string | null;
+}
+
+export async function fetchCatalogItems(
+  asins: string[]
+): Promise<CatalogItem[]> {
+  const token = await getAccessToken();
+  const results: CatalogItem[] = [];
+
+  // API accepts up to 20 ASINs at a time
+  for (let i = 0; i < asins.length; i += 20) {
+    const batch = asins.slice(i, i + 20);
+    const params = new URLSearchParams({
+      identifiers: batch.join(","),
+      identifiersType: "ASIN",
+      marketplaceIds: MARKETPLACE_ID,
+      includedData: "summaries,images,relationships",
+    });
+
+    const res = await fetch(
+      `${SP_API_BASE}/catalog/2022-04-01/items?${params}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-amz-access-token": token,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`Catalog fetch failed for batch: ${res.status} ${text}`);
+      continue;
+    }
+
+    const data = await res.json();
+    for (const item of data.items || []) {
+      const summary = item.summaries?.[0];
+      const mainImage = item.images?.[0]?.images?.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (img: any) => img.variant === "MAIN"
+      ) || item.images?.[0]?.images?.[0];
+
+      // Find parent relationship
+      let parentAsin: string | null = null;
+      let classification: string | null = null;
+      for (const rel of item.relationships || []) {
+        for (const r of rel.relationships || []) {
+          if (r.type === "VARIATION" && r.parentAsins?.[0]) {
+            parentAsin = r.parentAsins[0];
+            classification = "VARIATION_CHILD";
+          }
+          if (r.type === "VARIATION" && r.childAsins?.length > 0) {
+            classification = "VARIATION_PARENT";
+          }
+        }
+      }
+
+      results.push({
+        asin: item.asin,
+        title: summary?.itemName || "",
+        imageUrl: mainImage?.link || null,
+        price: summary?.buyBoxPrices?.[0]?.price?.amount
+          ? parseFloat(summary.buyBoxPrices[0].price.amount)
+          : null,
+        parentAsin,
+        classification,
+      });
+    }
+
+    // Rate limit: SP-API allows ~5 requests/sec for catalog
+    if (i + 20 < asins.length) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  return results;
+}

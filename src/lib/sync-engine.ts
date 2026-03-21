@@ -185,7 +185,14 @@ export async function syncQBProducts(): Promise<SyncResult> {
 async function cacheExternalSku(
   externalId: string,
   source: string,
-  label?: string
+  extra?: {
+    label?: string;
+    title?: string;
+    image_url?: string;
+    price?: number;
+    parent_asin?: string;
+    item_type?: string;
+  }
 ): Promise<void> {
   if (!externalId) return;
   const supabase = createServiceClient();
@@ -193,7 +200,12 @@ async function cacheExternalSku(
     {
       external_id: externalId,
       source,
-      label: label || null,
+      label: extra?.label || null,
+      title: extra?.title || null,
+      image_url: extra?.image_url || null,
+      price: extra?.price || null,
+      parent_asin: extra?.parent_asin || null,
+      item_type: extra?.item_type || null,
       last_seen_at: new Date().toISOString(),
     },
     { onConflict: "external_id,source" }
@@ -207,12 +219,26 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
     const supabase = createServiceClient();
     let count = 0;
 
+    // Fetch catalog data for all ASINs (titles, images, prices, parent/child)
+    const allAsins = Array.from(new Set(summaries.map((s) => s.asin)));
+    const catalogItems = await amazon.fetchCatalogItems(allAsins);
+    const catalogMap = new Map(catalogItems.map((c) => [c.asin, c]));
+
     for (const s of summaries) {
-      // Cache all ASINs and seller SKUs for the mapping dropdown
-      await cacheExternalSku(s.asin, "amazon", `ASIN: ${s.asin}`);
-      if (s.sellerSku && s.sellerSku !== s.asin) {
-        await cacheExternalSku(s.sellerSku, "amazon", `Seller SKU: ${s.sellerSku}`);
-      }
+      const catalog = catalogMap.get(s.asin);
+
+      // Skip parent ASINs — only cache child/standalone
+      if (catalog?.classification === "VARIATION_PARENT") continue;
+
+      // Cache ASIN with rich metadata
+      await cacheExternalSku(s.asin, "amazon", {
+        label: s.sellerSku !== s.asin ? `SKU: ${s.sellerSku}` : undefined,
+        title: catalog?.title,
+        image_url: catalog?.imageUrl || undefined,
+        price: catalog?.price || undefined,
+        parent_asin: catalog?.parentAsin || undefined,
+        item_type: catalog?.classification === "VARIATION_CHILD" ? "child" : "standalone",
+      });
 
       // Try to resolve by ASIN first, then sellerSku
       const productId =
@@ -260,7 +286,7 @@ export async function sync3PLInventory(): Promise<SyncResult> {
 
     for (const item of items) {
       // Cache all 3PL SKUs for the mapping dropdown
-      await cacheExternalSku(item.sku, "3pl", item.sku);
+      await cacheExternalSku(item.sku, "3pl", { label: item.sku });
 
       const productId = await resolveProductByMapping(item.sku, "3pl");
       if (!productId) {

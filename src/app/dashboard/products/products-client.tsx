@@ -286,7 +286,7 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
             key={m.id}
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[m.source]}`}
           >
-            {SOURCE_LABELS[m.source]}: {m.external_id}
+            {SOURCE_LABELS[m.source]}: {m.label || m.external_id}
             {m.unit_multiplier > 1 && <span className="text-xs opacity-70">({m.unit_multiplier}x)</span>}
             <button
               onClick={(e) => { e.stopPropagation(); deleteMapping(m.id); }}
@@ -598,7 +598,9 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
                                   <>
                                     <p className="text-xs font-medium text-gray-900 truncate">{sku.title}</p>
                                     <div className="flex items-center gap-2 mt-0.5">
-                                      <span className="font-mono text-xs text-gray-500">{sku.external_id}</span>
+                                      <span className="font-mono text-xs text-gray-500">
+                                        {sku.label || sku.external_id}
+                                      </span>
                                       {sku.price && <span className="text-xs text-gray-400">${sku.price.toFixed(2)}</span>}
                                       {sku.quantity != null && (
                                         <span className={`text-xs font-medium ${sku.quantity > 0 ? "text-green-600" : "text-gray-300"}`}>

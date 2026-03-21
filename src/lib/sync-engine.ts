@@ -521,11 +521,16 @@ export async function syncShopifyProducts(): Promise<SyncResult> {
     let count = 0;
 
     for (const item of items) {
-      await cacheExternalSku(item.variant.sku, "shopify", {
+      // Use product_id-variant_id as external_id (unique), SKU as label
+      // Multiple variants can share the same SKU across different products
+      const externalId = `${item.variant.product_id}-${item.variant.id}`;
+      await cacheExternalSku(externalId, "shopify", {
+        label: item.variant.sku || undefined,
         title: item.productTitle,
         image_url: item.productImage || undefined,
         price: item.variant.price ? parseFloat(item.variant.price) : undefined,
         quantity: item.variant.inventory_quantity,
+        seller_sku: item.variant.sku,
       });
       count++;
     }

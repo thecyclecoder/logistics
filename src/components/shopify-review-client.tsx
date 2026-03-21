@@ -7,10 +7,12 @@ interface ExternalSku {
   id: string;
   external_id: string;
   source: string;
+  label: string | null;
   title: string | null;
   image_url: string | null;
   price: number | null;
   quantity: number | null;
+  seller_sku: string | null;
   status: string;
   mapped: boolean;
   mapped_to: string | null;
@@ -174,7 +176,7 @@ export default function ShopifyReviewClient() {
                     <td className="px-4 py-2.5 max-w-xs">
                       <p className="text-sm font-medium text-gray-900 truncate">{sku.title || "—"}</p>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{sku.external_id}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{sku.seller_sku || sku.label || sku.external_id}</td>
                     <td className={`px-4 py-2.5 text-right font-medium ${(sku.quantity ?? 0) === 0 ? "text-gray-300" : "text-gray-900"}`}>
                       {sku.quantity ?? "—"}
                     </td>

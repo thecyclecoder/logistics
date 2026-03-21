@@ -140,7 +140,6 @@ export async function fetchProductsWithVariants(): Promise<ShopifyProductWithVar
     for (const product of data.products || []) {
       const imageUrl = product.images?.[0]?.src || null;
       for (const variant of product.variants || []) {
-        if (!variant.sku) continue;
         const variantTitle = variant.title === "Default Title"
           ? product.title
           : `${product.title} - ${variant.title}`;

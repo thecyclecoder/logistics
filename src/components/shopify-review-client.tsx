@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Search, Check, Eye, EyeOff } from "lucide-react";
+import { Search, Check, Eye, EyeOff, Link2 } from "lucide-react";
+import QuickMapModal from "@/components/quick-map-modal";
 
 interface ExternalSku {
   id: string;
@@ -26,6 +27,7 @@ export default function ShopifyReviewClient() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("unmapped");
   const [saving, setSaving] = useState<Set<string>>(new Set());
+  const [mappingSku, setMappingSku] = useState<ExternalSku | null>(null);
 
   useEffect(() => {
     fetch("/api/external-skus?source=shopify&include_all=true")
@@ -194,25 +196,27 @@ export default function ShopifyReviewClient() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {sku.status === "dismissed" ? (
-                        <button
-                          onClick={() => setStatusBatch([sku.id], "active")}
-                          disabled={saving.has(sku.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          <Eye className="h-3 w-3" /> Restore
-                        </button>
-                      ) : sku.mapped ? (
-                        <Check className="h-4 w-4 text-green-500 inline" />
-                      ) : (
-                        <button
-                          onClick={() => setStatusBatch([sku.id], "dismissed")}
-                          disabled={saving.has(sku.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                        >
-                          <EyeOff className="h-3 w-3" /> Dismiss
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {sku.status === "dismissed" ? (
+                          <button onClick={() => setStatusBatch([sku.id], "active")} disabled={saving.has(sku.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                            <Eye className="h-3 w-3" /> Restore
+                          </button>
+                        ) : sku.mapped ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <>
+                            <button onClick={() => setMappingSku(sku)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700">
+                              <Link2 className="h-3 w-3" /> Map
+                            </button>
+                            <button onClick={() => setStatusBatch([sku.id], "dismissed")} disabled={saving.has(sku.id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                              <EyeOff className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -221,6 +225,20 @@ export default function ShopifyReviewClient() {
           </table>
         </div>
       </div>
+
+      {mappingSku && (
+        <QuickMapModal
+          externalId={mappingSku.external_id}
+          source={mappingSku.source}
+          label={mappingSku.seller_sku || mappingSku.label}
+          title={mappingSku.title}
+          onMapped={(name) => {
+            setSkus((prev) => prev.map((s) => s.id === mappingSku.id ? { ...s, mapped: true, mapped_to: name } : s));
+            setMappingSku(null);
+          }}
+          onClose={() => setMappingSku(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { getCredentials } from "@/lib/credentials";
+import sharp from "sharp";
 
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 const QB_TOKENS_TABLE = "qb_tokens";
@@ -150,7 +151,9 @@ export async function fetchItemImages(
   itemIds: string[]
 ): Promise<Map<string, string>> {
   const { token, realmId } = await getRealmAndToken();
+  const supabase = createServiceClient();
   const imageMap = new Map<string, string>();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
   // Query attachables for all items in batches
   for (let i = 0; i < itemIds.length; i += 50) {
@@ -178,9 +181,36 @@ export async function fetchItemImages(
       // Find which item this attachment belongs to
       for (const ref of att.AttachableRef || []) {
         if (ref.EntityRef?.type === "Item" && ref.EntityRef?.value) {
-          // Only store first image per item
-          if (!imageMap.has(ref.EntityRef.value)) {
-            imageMap.set(ref.EntityRef.value, att.TempDownloadUri);
+          if (imageMap.has(ref.EntityRef.value)) continue;
+
+          try {
+            // Download image from QB temp URL
+            const imgRes = await fetch(att.TempDownloadUri);
+            if (!imgRes.ok) continue;
+
+            const imgBuffer = await imgRes.arrayBuffer();
+
+            // Resize to 400x400 max and convert to webp
+            const resized = await sharp(Buffer.from(imgBuffer))
+              .resize(400, 400, { fit: "inside", withoutEnlargement: true })
+              .webp({ quality: 80 })
+              .toBuffer();
+
+            const fileName = `qb-${ref.EntityRef.value}.webp`;
+
+            // Upload to Supabase Storage (overwrite if exists)
+            await supabase.storage
+              .from("product-images")
+              .upload(fileName, resized, {
+                contentType: "image/webp",
+                upsert: true,
+              });
+
+            // Build permanent public URL
+            const publicUrl = `${supabaseUrl}/storage/v1/object/public/product-images/${fileName}`;
+            imageMap.set(ref.EntityRef.value, publicUrl);
+          } catch {
+            // Skip if download/upload fails
           }
         }
       }

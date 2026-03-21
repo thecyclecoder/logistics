@@ -290,18 +290,31 @@ export async function sync3PLInventory(): Promise<SyncResult> {
     const supabase = createServiceClient();
     let count = 0;
 
-    // Fetch all items from Amplifier catalog to get names
+    // Fetch all items from Amplifier catalog to get names + discontinued status
     const catalogItems = await amplifier.fetchAllItems();
-    const nameMap = new Map(catalogItems.map((ci) => [ci.sku, ci.name]));
+    const catalogMap = new Map(catalogItems.map((ci) => [ci.sku, ci]));
 
     for (const item of items) {
-      // Cache all 3PL SKUs for the mapping dropdown with quantity + name
-      const itemName = nameMap.get(item.sku);
+      const catalogItem = catalogMap.get(item.sku);
+      const isDiscontinued = catalogItem?.discontinued ?? false;
+
+      // Cache 3PL SKU — auto-dismiss if discontinued
       await cacheExternalSku(item.sku, "3pl", {
         label: item.sku,
-        title: itemName || undefined,
+        title: catalogItem?.name || undefined,
         quantity: item.quantity_available,
       });
+
+      if (isDiscontinued) {
+        // Auto-dismiss discontinued items
+        const supabaseForDismiss = createServiceClient();
+        await supabaseForDismiss
+          .from("external_skus")
+          .update({ dismissed: true })
+          .eq("external_id", item.sku)
+          .eq("source", "3pl");
+        continue;
+      }
 
       const productId = await resolveProductByMapping(item.sku, "3pl");
       if (!productId) {

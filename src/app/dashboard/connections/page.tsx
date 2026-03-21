@@ -14,46 +14,54 @@ interface ConnectionCard {
 export default async function ConnectionsPage() {
   const supabase = createServiceClient();
 
-  // Check QuickBooks connection
+  // Check all credentials from DB
+  const { data: allCreds } = await supabase
+    .from("integration_credentials")
+    .select("id, credentials");
+
+  const credsMap = new Map<string, Record<string, string>>();
+  for (const row of allCreds || []) {
+    credsMap.set(row.id, row.credentials as Record<string, string>);
+  }
+
+  // Check QuickBooks OAuth tokens
   const { data: qbTokens } = await supabase
     .from("qb_tokens")
     .select("id")
     .limit(1);
-  const qbConnected = (qbTokens && qbTokens.length > 0) || false;
+  const qbHasTokens = (qbTokens && qbTokens.length > 0) || false;
 
-  // Check Shopify connection
+  // Check Shopify OAuth tokens
   const { data: shopifyTokens } = await supabase
     .from("shopify_tokens")
     .select("id")
     .limit(1);
-  const shopifyConnected =
-    (shopifyTokens && shopifyTokens.length > 0) ||
-    !!process.env.SHOPIFY_STORE_DOMAIN;
+  const shopifyHasTokens = (shopifyTokens && shopifyTokens.length > 0) || false;
 
   const connections: ConnectionCard[] = [
     {
       name: "Amplifier",
       slug: "amplifier",
       description: "3PL fulfillment and inventory management",
-      connected: !!process.env.AMPLIFIER_API_KEY,
+      connected: !!credsMap.get("amplifier")?.api_key,
     },
     {
       name: "Amazon",
       slug: "amazon",
       description: "Amazon Seller Central via SP-API",
-      connected: !!process.env.AMAZON_SP_CLIENT_ID,
+      connected: !!credsMap.get("amazon")?.client_id,
     },
     {
       name: "QuickBooks",
       slug: "quickbooks",
       description: "Accounting, products, and sales data",
-      connected: qbConnected,
+      connected: !!credsMap.get("quickbooks")?.client_id && qbHasTokens,
     },
     {
       name: "Shopify",
       slug: "shopify",
       description: "Storefront and order management",
-      connected: shopifyConnected,
+      connected: !!credsMap.get("shopify")?.client_id && shopifyHasTokens,
     },
   ];
 

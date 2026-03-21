@@ -12,7 +12,7 @@ export default async function ShopifyConnectionPage() {
     .single();
 
   const connected = !!data;
-  const storeDomain = data?.shop_domain || process.env.SHOPIFY_STORE_DOMAIN || null;
+  const storeDomain = data?.shop_domain || null;
   const lastRefresh = data?.updated_at || null;
 
   return (

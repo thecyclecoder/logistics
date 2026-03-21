@@ -5,7 +5,7 @@ export async function GET() {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, quickbooks_name, sku, image_url")
+    .select("id, quickbooks_name, sku, image_url, item_type, product_category, bundle_id")
     .eq("active", true)
     .order("quickbooks_name");
 

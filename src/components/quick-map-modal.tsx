@@ -8,6 +8,9 @@ interface Product {
   quickbooks_name: string;
   sku: string | null;
   image_url: string | null;
+  item_type: string;
+  product_category: string | null;
+  bundle_id: string | null;
 }
 
 interface QuickMapModalProps {
@@ -41,9 +44,22 @@ export default function QuickMapModal({
   }, []);
 
   const filtered = useMemo(() => {
-    if (!search) return products;
+    let list = products;
+
+    // Amazon and Shopify can only map to finished goods, not components
+    if (source === "amazon" || source === "shopify") {
+      list = list.filter((p) => {
+        // Exclude items explicitly categorized as components
+        if (p.product_category === "component") return false;
+        // Exclude items that are children of a bundle (BOM components)
+        if (p.bundle_id) return false;
+        return true;
+      });
+    }
+
+    if (!search) return list;
     const q = search.toLowerCase();
-    return products.filter(
+    return list.filter(
       (p) =>
         p.quickbooks_name.toLowerCase().includes(q) ||
         p.sku?.toLowerCase().includes(q)

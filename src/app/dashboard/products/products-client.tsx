@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Package, Layers, Boxes, ChevronDown, Plus, Trash2, Search, Check, X } from "lucide-react";
+import { Package, Layers, Boxes, ChevronDown, ChevronRight, Plus, Trash2, Search, Check, X } from "lucide-react";
 import type { Product, SkuMapping, Source } from "@/lib/types/database";
 
 type ProductCategory = "finished_good" | "component" | "finished_good_no_bom";
@@ -76,6 +76,21 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
   const [multiplier, setMultiplier] = useState(1);
   const [manualId, setManualId] = useState("");
   const [mappingSaving, setMappingSaving] = useState(false);
+  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
+  const [externalSkuDetails, setExternalSkuDetails] = useState<Map<string, ExternalSku>>(new Map());
+
+  // Fetch external SKU details for rich mapping display
+  useEffect(() => {
+    fetch("/api/external-skus?include_all=true")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const map = new Map<string, ExternalSku>();
+          data.forEach((s: ExternalSku) => map.set(`${s.external_id}::${s.source}`, s));
+          setExternalSkuDetails(map);
+        }
+      });
+  }, [mappings]);
 
   useEffect(() => {
     if (modalProductId) {
@@ -279,30 +294,97 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
 
   const renderMappings = (productId: string) => {
     const productMappings = mappingsByProduct.get(productId) || [];
-    return (
-      <div className="flex flex-wrap items-center gap-1.5">
-        {productMappings.map((m) => (
-          <span
-            key={m.id}
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[m.source]}`}
-          >
-            {SOURCE_LABELS[m.source]}: {m.label || m.external_id}
-            {m.unit_multiplier > 1 && <span className="text-xs opacity-70">({m.unit_multiplier}x)</span>}
-            <button
-              onClick={(e) => { e.stopPropagation(); deleteMapping(m.id); }}
-              className="ml-0.5 rounded-full hover:bg-black/10 p-0.5"
-            >
-              <X className="h-2.5 w-2.5" />
-            </button>
-          </span>
-        ))}
+    const isExpanded = expandedProductId === productId;
+
+    // Group by source
+    const bySource: Record<string, SkuMapping[]> = {};
+    for (const m of productMappings) {
+      bySource[m.source] = bySource[m.source] || [];
+      bySource[m.source].push(m);
+    }
+
+    if (productMappings.length === 0) {
+      return (
         <button
           onClick={() => openMappingModal(productId)}
-          className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-400 hover:border-gray-400 hover:text-gray-600"
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-xs text-gray-400 hover:border-gray-400 hover:text-gray-600"
         >
           <Plus className="h-3 w-3" />
-          Map
+          Map SKUs
         </button>
+      );
+    }
+
+    return (
+      <div>
+        {/* Summary line — click to expand */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setExpandedProductId(isExpanded ? null : productId)}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+          >
+            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+          {Object.entries(bySource).map(([source, items]) => (
+            <button
+              key={source}
+              onClick={() => setExpandedProductId(isExpanded ? null : productId)}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium cursor-pointer hover:opacity-80 ${SOURCE_COLORS[source as Source]}`}
+            >
+              {SOURCE_LABELS[source as Source]} ({items.length})
+            </button>
+          ))}
+          <button
+            onClick={() => openMappingModal(productId)}
+            className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-400 hover:border-gray-400 hover:text-gray-600"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        </div>
+
+        {/* Expanded rich detail view */}
+        {isExpanded && (
+          <div className="mt-2 ml-4 space-y-3">
+            {Object.entries(bySource).map(([source, items]) => (
+              <div key={source}>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
+                  {SOURCE_LABELS[source as Source]}
+                </p>
+                <div className="space-y-1.5">
+                  {items.map((m) => {
+                    const detail = externalSkuDetails.get(`${m.external_id}::${m.source}`);
+                    return (
+                      <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-gray-50 px-3 py-2">
+                        {detail?.image_url ? (
+                          <img src={detail.image_url} alt="" className="h-8 w-8 rounded-md object-contain bg-white border border-gray-100 flex-shrink-0" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-md bg-gray-200 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate">
+                            {detail?.title || m.label || m.external_id}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {m.label || m.external_id}
+                            {m.unit_multiplier > 1 && (
+                              <span className="ml-1.5 text-blue-600">{m.unit_multiplier}-pack</span>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteMapping(m.id); }}
+                          className="rounded-lg p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };

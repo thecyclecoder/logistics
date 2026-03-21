@@ -138,14 +138,24 @@ export async function fetchProductsWithVariants(): Promise<ShopifyProductWithVar
 
     const data = await res.json();
     for (const product of data.products || []) {
-      const imageUrl = product.images?.[0]?.src || null;
+      const fallbackImage = product.images?.[0]?.src || null;
+      // Build image lookup by ID for variant-specific images
+      const imageById = new Map<number, string>();
+      for (const img of product.images || []) {
+        if (img.id && img.src) imageById.set(img.id, img.src);
+      }
+
       for (const variant of product.variants || []) {
         const variantTitle = variant.title === "Default Title"
           ? product.title
           : `${product.title} - ${variant.title}`;
+        // Use variant's specific image if it has one, otherwise fall back to product image
+        const variantImage = variant.image_id
+          ? imageById.get(variant.image_id) || fallbackImage
+          : fallbackImage;
         results.push({
           productTitle: variantTitle,
-          productImage: imageUrl,
+          productImage: variantImage,
           variant,
         });
       }

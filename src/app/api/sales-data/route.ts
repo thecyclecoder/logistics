@@ -138,7 +138,8 @@ export async function GET(request: NextRequest) {
     shopify_units: items.reduce((s, i) => s + i.shopify.units, 0),
     shopify_revenue: items.reduce((s, i) => s + i.shopify.revenue, 0),
     recurring_units: items.reduce((s, i) => s + i.amazon.recurring + i.shopify.recurring, 0),
-    one_time_units: items.reduce((s, i) => s + i.amazon.one_time + i.amazon.sns_checkout + i.shopify.one_time + i.shopify.first_sub, 0),
+    sub_checkout_units: items.reduce((s, i) => s + i.amazon.sns_checkout + i.shopify.first_sub, 0),
+    one_time_units: items.reduce((s, i) => s + i.amazon.one_time + i.shopify.one_time, 0),
   };
 
   return NextResponse.json({ items, totals });

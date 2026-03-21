@@ -22,6 +22,7 @@ interface Totals {
   shopify_units: number;
   shopify_revenue: number;
   recurring_units: number;
+  sub_checkout_units: number;
   one_time_units: number;
 }
 
@@ -146,7 +147,7 @@ export default function SalesPage() {
         <>
           {/* Stat Cards */}
           {totals && (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-500">Revenue</p>
@@ -174,10 +175,18 @@ export default function SalesPage() {
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-500">Recurring</p>
-                  <TrendingUp className="h-4 w-4 text-gray-400" />
+                  <TrendingUp className="h-4 w-4 text-green-500" />
                 </div>
-                <p className="mt-2 text-2xl font-semibold text-gray-900">{totals.recurring_units.toLocaleString()}</p>
-                <p className="mt-1 text-xs text-green-600">{recurringPct}% of total</p>
+                <p className="mt-2 text-2xl font-semibold text-green-600">{totals.recurring_units.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-green-600">{recurringPct}% auto-shipped</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-500">Subscription Checkout</p>
+                  <TrendingUp className="h-4 w-4 text-blue-400" />
+                </div>
+                <p className="mt-2 text-2xl font-semibold text-blue-600">{totals.sub_checkout_units.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-blue-500">first-time subscription</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <div className="flex items-center justify-between">
@@ -185,6 +194,7 @@ export default function SalesPage() {
                   <ShoppingCart className="h-4 w-4 text-gray-400" />
                 </div>
                 <p className="mt-2 text-2xl font-semibold text-gray-900">{totals.one_time_units.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-gray-400">no subscription</p>
               </div>
             </div>
           )}

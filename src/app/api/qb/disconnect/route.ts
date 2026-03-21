@@ -4,7 +4,7 @@ import { getCredentials } from "@/lib/credentials";
 
 const QB_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
 
-export async function GET() {
+export async function POST() {
   const supabase = createServiceClient();
   const { data: tokens } = await supabase
     .from("qb_tokens")

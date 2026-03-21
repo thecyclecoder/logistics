@@ -142,13 +142,18 @@ export default function QuickBooksConnectionClient({
                 <ExternalLink className="h-4 w-4" />
                 Reconnect
               </a>
-              <a
-                href="/api/qb/disconnect"
+              <button
+                onClick={async () => {
+                  if (confirm("Disconnect QuickBooks? You will need to re-authorize.")) {
+                    await fetch("/api/qb/disconnect", { method: "POST" });
+                    window.location.reload();
+                  }
+                }}
                 className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
               >
                 <Unplug className="h-4 w-4" />
                 Disconnect
-              </a>
+              </button>
             </>
           )}
         </div>

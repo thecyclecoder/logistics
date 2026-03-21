@@ -69,32 +69,55 @@ export async function GET() {
     manualByProduct.set(m.product_id, list);
   }
 
-  // Build product index
+  // 6. QB inventory snapshots (latest per product = end of prev month baseline)
+  const { data: qbSnapshots } = await supabase
+    .from("inventory_snapshots")
+    .select("product_id, quantity, snapshot_at")
+    .eq("source", "quickbooks")
+    .order("snapshot_at", { ascending: false });
+
+  const qbInventory = new Map<string, number>();
+  for (const snap of qbSnapshots || []) {
+    if (!qbInventory.has(snap.product_id)) {
+      qbInventory.set(snap.product_id, snap.quantity);
+    }
+  }
+  const qbSnapshotDate = qbSnapshots?.[0]?.snapshot_at?.split("T")[0] || null;
+
+  // 7. Sales since month start (for burn calculation)
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+  const { data: amazonSales } = await supabase
+    .from("amazon_sales_snapshots")
+    .select("asin, units_shipped")
+    .gte("sale_date", monthStart);
+
+  const { data: shopifySales } = await supabase
+    .from("shopify_sales_snapshots")
+    .select("variant_id, units_sold")
+    .gte("sale_date", monthStart);
+
+  const amzSalesByAsin = new Map<string, number>();
+  for (const r of amazonSales || []) {
+    amzSalesByAsin.set(r.asin, (amzSalesByAsin.get(r.asin) || 0) + r.units_shipped);
+  }
+  const shopSalesByVariant = new Map<string, number>();
+  for (const r of shopifySales || []) {
+    shopSalesByVariant.set(r.variant_id, (shopSalesByVariant.get(r.variant_id) || 0) + r.units_sold);
+  }
+
+  // Build indexes
   interface ProductInfo {
-    id: string;
-    name: string;
-    sku: string | null;
-    image_url: string | null;
-    item_type: string;
-    product_category: string | null;
-    bundle_id: string | null;
-    bundle_quantity: number | null;
+    id: string; name: string; sku: string | null; image_url: string | null;
+    item_type: string; product_category: string | null;
+    bundle_id: string | null; bundle_quantity: number | null;
   }
   const productById = new Map<string, ProductInfo>();
   for (const p of products || []) {
-    productById.set(p.id, {
-      id: p.id,
-      name: p.quickbooks_name,
-      sku: p.sku,
-      image_url: p.image_url,
-      item_type: p.item_type,
-      product_category: p.product_category,
-      bundle_id: p.bundle_id,
-      bundle_quantity: p.bundle_quantity,
-    });
+    productById.set(p.id, { id: p.id, name: p.quickbooks_name, sku: p.sku, image_url: p.image_url, item_type: p.item_type, product_category: p.product_category, bundle_id: p.bundle_id, bundle_quantity: p.bundle_quantity });
   }
 
-  // Mapping lookup
   const mappingsByProduct = new Map<string, Array<{ external_id: string; source: string; multiplier: number }>>();
   for (const m of mappings || []) {
     const list = mappingsByProduct.get(m.product_id) || [];
@@ -103,30 +126,35 @@ export async function GET() {
   }
 
   function getChannelInventory(productId: string) {
-    const productMappings = mappingsByProduct.get(productId) || [];
-    let fba = 0;
-    let tpl = 0;
-    for (const m of productMappings) {
-      if (m.source === "amazon") {
-        fba += (fbaByAsin.get(m.external_id) || 0) * m.multiplier;
-      } else if (m.source === "3pl") {
-        tpl += (tplBySku.get(m.external_id) || 0) * m.multiplier;
-      }
+    const pm = mappingsByProduct.get(productId) || [];
+    let fba = 0, tpl = 0;
+    for (const m of pm) {
+      if (m.source === "amazon") { fba += (fbaByAsin.get(m.external_id) || 0) * m.multiplier; }
+      else if (m.source === "3pl") { tpl += (tplBySku.get(m.external_id) || 0) * m.multiplier; }
     }
     const manualList = manualByProduct.get(productId) || [];
     const manual = manualList.reduce((s, m) => s + m.quantity, 0);
     return { fba, tpl, manual, manual_entries: manualList, total: fba + tpl + manual };
   }
 
-  // Classify products
+  function getSalesBurn(productId: string) {
+    const pm = mappingsByProduct.get(productId) || [];
+    let amzSold = 0, shopSold = 0;
+    for (const m of pm) {
+      if (m.source === "amazon") { amzSold += (amzSalesByAsin.get(m.external_id) || 0) * m.multiplier; }
+      else if (m.source === "shopify") { shopSold += (shopSalesByVariant.get(m.external_id) || 0) * m.multiplier; }
+    }
+    return { amazon_sold: amzSold, shopify_sold: shopSold, total_sold: amzSold + shopSold };
+  }
+
+  // Classify
   const bundles: ProductInfo[] = [];
   const bomComponents = new Map<string, ProductInfo[]>();
   const componentIds = new Set<string>();
 
   for (const p of Array.from(productById.values())) {
-    if (p.item_type === "bundle") {
-      bundles.push(p);
-    } else if (p.bundle_id) {
+    if (p.item_type === "bundle") { bundles.push(p); }
+    else if (p.bundle_id) {
       componentIds.add(p.id);
       const list = bomComponents.get(p.bundle_id) || [];
       list.push(p);
@@ -136,70 +164,74 @@ export async function GET() {
 
   const standaloneFinished: ProductInfo[] = [];
   const unattachedComponents: ProductInfo[] = [];
-
   for (const p of Array.from(productById.values())) {
-    if (p.item_type === "bundle") continue;
-    if (componentIds.has(p.id)) continue;
-    if (p.product_category === "component") {
-      unattachedComponents.push(p);
-    } else {
-      standaloneFinished.push(p);
-    }
+    if (p.item_type === "bundle" || componentIds.has(p.id)) continue;
+    if (p.product_category === "component") { unattachedComponents.push(p); }
+    else { standaloneFinished.push(p); }
   }
 
-  // Build finished goods with BOM
+  // Build output
   const finishedGoodsWithBOM = bundles.map((bundle) => {
     const inv = getChannelInventory(bundle.id);
+    const burn = getSalesBurn(bundle.id);
+    const qbStart = qbInventory.get(bundle.id) || 0;
+    const expected = qbStart - burn.total_sold;
     const components = bomComponents.get(bundle.id) || [];
 
     const bomItems = components.map((comp) => {
       const bomQty = comp.bundle_quantity || 1;
-      const impliedFromParent = inv.total * bomQty;
+      const implied = inv.total * bomQty;
       const compInv = getChannelInventory(comp.id);
-
+      const compQbStart = qbInventory.get(comp.id) || 0;
       return {
-        product_id: comp.id,
-        name: comp.name,
-        sku: comp.sku,
-        image_url: comp.image_url,
-        bom_quantity: bomQty,
-        implied_units: impliedFromParent,
-        standalone_fba: compInv.fba,
-        standalone_tpl: compInv.tpl,
-        standalone_manual: compInv.manual,
-        standalone_manual_entries: compInv.manual_entries,
-        standalone_total: compInv.total,
-        total_inventory: impliedFromParent + compInv.total,
+        product_id: comp.id, name: comp.name, sku: comp.sku, image_url: comp.image_url,
+        bom_quantity: bomQty, implied_units: implied,
+        standalone_fba: compInv.fba, standalone_tpl: compInv.tpl,
+        standalone_manual: compInv.manual, standalone_total: compInv.total,
+        total_inventory: implied + compInv.total,
+        qb_starting: compQbStart,
       };
     });
 
     return {
-      product_id: bundle.id,
-      name: bundle.name,
-      sku: bundle.sku,
-      image_url: bundle.image_url,
-      fba: inv.fba,
-      tpl: inv.tpl,
-      manual: inv.manual,
-      manual_entries: inv.manual_entries,
-      finished_good_units: inv.total,
+      product_id: bundle.id, name: bundle.name, sku: bundle.sku, image_url: bundle.image_url,
+      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, finished_good_units: inv.total,
+      qb_starting: qbStart, amazon_sold: burn.amazon_sold, shopify_sold: burn.shopify_sold,
+      total_sold: burn.total_sold, expected_remaining: expected,
+      variance: inv.total - expected,
       bom_items: bomItems,
     };
-  }).filter((fg) => fg.finished_good_units > 0 || fg.bom_items.some((b) => b.total_inventory > 0));
+  });
 
-  const standaloneItems = standaloneFinished
-    .map((p) => ({ ...p, ...getChannelInventory(p.id) }))
-    .filter((i) => i.total > 0);
+  const standaloneItems = standaloneFinished.map((p) => {
+    const inv = getChannelInventory(p.id);
+    const burn = getSalesBurn(p.id);
+    const qbStart = qbInventory.get(p.id) || 0;
+    const expected = qbStart - burn.total_sold;
+    return {
+      product_id: p.id, name: p.name, sku: p.sku, image_url: p.image_url,
+      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, total: inv.total,
+      qb_starting: qbStart, amazon_sold: burn.amazon_sold, shopify_sold: burn.shopify_sold,
+      total_sold: burn.total_sold, expected_remaining: expected,
+      variance: inv.total - expected,
+    };
+  });
 
-  const unattachedItems = unattachedComponents
-    .map((p) => ({ ...p, ...getChannelInventory(p.id) }))
-    .filter((i) => i.total > 0);
+  const unattachedItems = unattachedComponents.map((p) => {
+    const inv = getChannelInventory(p.id);
+    return {
+      product_id: p.id, name: p.name, sku: p.sku, image_url: p.image_url,
+      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, total: inv.total,
+    };
+  });
 
   return NextResponse.json({
-    finished_goods_with_bom: finishedGoodsWithBOM,
-    standalone_finished_goods: standaloneItems,
-    unattached_components: unattachedItems,
+    finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b.total_inventory > 0)),
+    standalone_finished_goods: standaloneItems.filter((i) => i.total > 0 || i.qb_starting > 0),
+    unattached_components: unattachedItems.filter((i) => i.total > 0),
     meta: {
+      qb_snapshot_date: qbSnapshotDate,
+      sales_since: monthStart,
       fba_snapshot_date: latestFbaDate?.snapshot_date || null,
       tpl_snapshot_date: latestTplDate?.snapshot_date || null,
     },

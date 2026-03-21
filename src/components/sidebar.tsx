@@ -9,7 +9,6 @@ import {
   Package,
   Layers,
   DollarSign,
-  Link2,
   LogOut,
   Package as LogoIcon,
   Plug,
@@ -22,7 +21,6 @@ const navItems = [
   { href: "/dashboard/products", label: "Products", icon: Layers },
   { href: "/dashboard/inventory", label: "Inventory", icon: Package },
   { href: "/dashboard/sales", label: "Sales", icon: DollarSign },
-  { href: "/dashboard/mapping", label: "SKU Mapping", icon: Link2 },
   { href: "/dashboard/connections", label: "Connections", icon: Plug },
 ];
 

@@ -9,7 +9,7 @@ export async function DELETE(
 
   const { error } = await supabase
     .from("sku_mappings")
-    .update({ active: false })
+    .delete()
     .eq("id", params.id);
 
   if (error) {

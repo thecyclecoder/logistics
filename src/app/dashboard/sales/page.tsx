@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { DollarSign, ShoppingCart, RefreshCw, TrendingUp, Search, AlertCircle } from "lucide-react";
+import { RefreshCw, Search, AlertCircle } from "lucide-react";
 
 interface ProductSales {
   product_id: string;

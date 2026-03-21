@@ -192,6 +192,8 @@ async function cacheExternalSku(
     price?: number;
     parent_asin?: string;
     item_type?: string;
+    quantity?: number;
+    seller_sku?: string;
   }
 ): Promise<void> {
   if (!externalId) return;
@@ -206,6 +208,8 @@ async function cacheExternalSku(
       price: extra?.price || null,
       parent_asin: extra?.parent_asin || null,
       item_type: extra?.item_type || null,
+      quantity: extra?.quantity ?? null,
+      seller_sku: extra?.seller_sku || null,
       last_seen_at: new Date().toISOString(),
     },
     { onConflict: "external_id,source" }
@@ -230,7 +234,7 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
       // Skip parent ASINs — only cache child/standalone
       if (catalog?.classification === "VARIATION_PARENT") continue;
 
-      // Cache ASIN with rich metadata
+      // Cache ASIN with rich metadata + quantity
       await cacheExternalSku(s.asin, "amazon", {
         label: s.sellerSku !== s.asin ? `SKU: ${s.sellerSku}` : undefined,
         title: catalog?.title,
@@ -238,6 +242,8 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
         price: catalog?.price || undefined,
         parent_asin: catalog?.parentAsin || undefined,
         item_type: catalog?.classification === "VARIATION_CHILD" ? "child" : "standalone",
+        quantity: s.totalFulfillableQuantity,
+        seller_sku: s.sellerSku,
       });
 
       // Try to resolve by ASIN first, then sellerSku
@@ -285,8 +291,11 @@ export async function sync3PLInventory(): Promise<SyncResult> {
     let count = 0;
 
     for (const item of items) {
-      // Cache all 3PL SKUs for the mapping dropdown
-      await cacheExternalSku(item.sku, "3pl", { label: item.sku });
+      // Cache all 3PL SKUs for the mapping dropdown with quantity
+      await cacheExternalSku(item.sku, "3pl", {
+        label: item.sku,
+        quantity: item.quantity_available,
+      });
 
       const productId = await resolveProductByMapping(item.sku, "3pl");
       if (!productId) {

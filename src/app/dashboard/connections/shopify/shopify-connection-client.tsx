@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   RefreshCw,
 } from "lucide-react";
+import ShopifyReviewClient from "@/components/shopify-review-client";
 
 export default function ShopifyConnectionClient({
   initialConnected,
@@ -141,6 +142,8 @@ export default function ShopifyConnectionClient({
           </div>
         )}
       </div>
+
+      {initialConnected && <ShopifyReviewClient />}
     </div>
   );
 }

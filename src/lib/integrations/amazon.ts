@@ -269,11 +269,13 @@ export async function fetchCatalogItems(
 
       results.push({
         asin: item.asin,
-        title: summary?.itemName || "",
+        title: summary?.itemName || summary?.brandName || "",
         imageUrl: mainImage?.link || null,
         price: summary?.buyBoxPrices?.[0]?.price?.amount
           ? parseFloat(summary.buyBoxPrices[0].price.amount)
-          : null,
+          : summary?.purchasableOffers?.[0]?.price?.amount
+            ? parseFloat(summary.purchasableOffers[0].price.amount)
+            : null,
         parentAsin,
         classification,
       });

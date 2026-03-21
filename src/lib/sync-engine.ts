@@ -235,13 +235,17 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
       if (catalog?.classification === "VARIATION_PARENT") continue;
 
       // Cache ASIN with rich metadata + quantity
+      // If catalog data unavailable (delisted/suppressed), use seller SKU as fallback title
+      const fallbackTitle = catalog?.title || `${s.sellerSku} (${s.asin})`;
       await cacheExternalSku(s.asin, "amazon", {
         label: s.sellerSku !== s.asin ? `SKU: ${s.sellerSku}` : undefined,
-        title: catalog?.title,
+        title: fallbackTitle,
         image_url: catalog?.imageUrl || undefined,
         price: catalog?.price || undefined,
         parent_asin: catalog?.parentAsin || undefined,
-        item_type: catalog?.classification === "VARIATION_CHILD" ? "child" : "standalone",
+        item_type: catalog
+          ? catalog.classification === "VARIATION_CHILD" ? "child" : "standalone"
+          : "unknown",
         quantity: s.totalFulfillableQuantity,
         seller_sku: s.sellerSku,
       });

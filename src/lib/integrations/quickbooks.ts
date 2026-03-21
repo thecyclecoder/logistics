@@ -27,34 +27,28 @@ async function getStoredTokens(): Promise<{
 }
 
 async function storeRefreshToken(refreshToken: string): Promise<void> {
-  try {
-    const supabase = createServiceClient();
-    // Update only refresh_token and updated_at, preserve realm_id
-    const { data: existing } = await supabase
-      .from(QB_TOKENS_TABLE)
-      .select("id")
-      .eq("id", "current")
-      .single();
+  const supabase = createServiceClient();
 
-    if (existing) {
-      await supabase
-        .from(QB_TOKENS_TABLE)
-        .update({
-          refresh_token: refreshToken,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", "current");
-    } else {
-      await supabase
-        .from(QB_TOKENS_TABLE)
-        .insert({
-          id: "current",
-          refresh_token: refreshToken,
-          updated_at: new Date().toISOString(),
-        });
-    }
-  } catch (err) {
-    console.error("Failed to store QB refresh token:", err);
+  // Always use upsert to handle both insert and update cases
+  // Explicitly preserve realm_id by reading it first
+  const { data: existing } = await supabase
+    .from(QB_TOKENS_TABLE)
+    .select("realm_id")
+    .eq("id", "current")
+    .single();
+
+  const { error } = await supabase
+    .from(QB_TOKENS_TABLE)
+    .upsert({
+      id: "current",
+      refresh_token: refreshToken,
+      realm_id: existing?.realm_id || null,
+      updated_at: new Date().toISOString(),
+    });
+
+  if (error) {
+    console.error("CRITICAL: Failed to store QB refresh token:", error.message);
+    throw new Error(`Failed to store QB refresh token: ${error.message}`);
   }
 }
 

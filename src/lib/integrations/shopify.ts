@@ -56,6 +56,8 @@ export interface ShopifyOrder {
 
 export interface ShopifyLineItem {
   id: number;
+  variant_id: number;
+  product_id: number;
   sku: string;
   quantity: number;
   price: string;
@@ -170,4 +172,55 @@ export async function fetchProductsWithVariants(): Promise<ShopifyProductWithVar
   }
 
   return results;
+}
+
+export interface ShopifyOrderForSales {
+  id: number;
+  name: string;
+  created_at: string;
+  financial_status: string;
+  source_name: string;
+  tags: string;
+  line_items: Array<{
+    id: number;
+    variant_id: number;
+    product_id: number;
+    sku: string;
+    name: string;
+    quantity: number;
+    price: string;
+  }>;
+}
+
+export async function fetchOrdersForSales(
+  createdAtMin: string,
+  createdAtMax: string
+): Promise<ShopifyOrderForSales[]> {
+  const creds = await getCredentials();
+  const orders: ShopifyOrderForSales[] = [];
+  let url: string | null = shopifyUrl(
+    creds.domain,
+    `/orders.json?status=any&created_at_min=${createdAtMin}&created_at_max=${createdAtMax}&limit=250`
+  );
+
+  while (url) {
+    const res: Response = await fetch(url, { headers: getHeaders(creds.token) });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Shopify orders fetch failed: ${res.status} ${text}`);
+    }
+
+    const data = await res.json();
+    orders.push(...(data.orders || []));
+
+    const linkHeader = res.headers.get("link");
+    url = null;
+    if (linkHeader) {
+      const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      if (match) url = match[1];
+    }
+  }
+
+  return orders;
 }

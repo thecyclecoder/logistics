@@ -721,6 +721,136 @@ export async function syncAmazonSalesSnapshot(): Promise<SyncResult> {
   }
 }
 
+// Shopify sales snapshot — fetches orders for a date range, groups by variant+date
+export async function syncShopifySalesSnapshot(
+  startDateStr?: string,
+  endDateStr?: string
+): Promise<SyncResult> {
+  const logId = await startLog("syncShopifySalesSnapshot");
+  try {
+    const supabase = createServiceClient();
+
+    // Default: last 3 days (Shopify orders settle faster than Amazon)
+    const endDate = endDateStr || (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split("T")[0];
+    })();
+    const startDate = startDateStr || (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 4);
+      return d.toISOString().split("T")[0];
+    })();
+
+    const orders = await shopify.fetchOrdersForSales(
+      startDate + "T00:00:00Z",
+      endDate + "T23:59:59Z"
+    );
+
+    // Group by variant_id + sale_date
+    const grouped = new Map<
+      string,
+      {
+        variant_id: string;
+        sku: string;
+        product_name: string;
+        sale_date: string;
+        units: number;
+        revenue: number;
+        recurring: { units: number; revenue: number };
+        first_sub: { units: number; revenue: number };
+        one_time: { units: number; revenue: number };
+        refund_units: number;
+        refund_amount: number;
+      }
+    >();
+
+    for (const order of orders) {
+      if (order.financial_status === "voided") continue;
+
+      const saleDate = order.created_at.split("T")[0];
+      const isRecurring = order.source_name === "subscription_contract_checkout_one";
+      const isFirstSub = !isRecurring && (order.tags || "").includes("First Subscription");
+
+      for (const item of order.line_items) {
+        const variantKey = item.product_id + "-" + item.variant_id;
+        const key = `${variantKey}::${saleDate}`;
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            variant_id: variantKey,
+            sku: item.sku || "",
+            product_name: item.name,
+            sale_date: saleDate,
+            units: 0,
+            revenue: 0,
+            recurring: { units: 0, revenue: 0 },
+            first_sub: { units: 0, revenue: 0 },
+            one_time: { units: 0, revenue: 0 },
+            refund_units: 0,
+            refund_amount: 0,
+          });
+        }
+
+        const g = grouped.get(key)!;
+        const lineRevenue = parseFloat(item.price) * item.quantity;
+
+        if (order.financial_status === "refunded") {
+          g.refund_units += item.quantity;
+          g.refund_amount += lineRevenue;
+        } else {
+          g.units += item.quantity;
+          g.revenue += lineRevenue;
+
+          if (isRecurring) {
+            g.recurring.units += item.quantity;
+            g.recurring.revenue += lineRevenue;
+          } else if (isFirstSub) {
+            g.first_sub.units += item.quantity;
+            g.first_sub.revenue += lineRevenue;
+          } else {
+            g.one_time.units += item.quantity;
+            g.one_time.revenue += lineRevenue;
+          }
+        }
+      }
+    }
+
+    // Upsert
+    let count = 0;
+    for (const g of Array.from(grouped.values())) {
+      await supabase.from("shopify_sales_snapshots").upsert(
+        {
+          variant_id: g.variant_id,
+          sku: g.sku,
+          product_name: g.product_name,
+          sale_date: g.sale_date,
+          units_sold: g.units,
+          revenue: g.revenue,
+          recurring_units: g.recurring.units,
+          recurring_revenue: g.recurring.revenue,
+          first_sub_units: g.first_sub.units,
+          first_sub_revenue: g.first_sub.revenue,
+          one_time_units: g.one_time.units,
+          one_time_revenue: g.one_time.revenue,
+          refund_units: g.refund_units,
+          refund_amount: g.refund_amount,
+          snapshot_taken_at: new Date().toISOString(),
+        },
+        { onConflict: "variant_id,sale_date" }
+      );
+      count++;
+    }
+
+    await finishLog(logId, "success", count);
+    return { job: "syncShopifySalesSnapshot", status: "success", records: count };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await finishLog(logId, "error", 0, msg);
+    return { job: "syncShopifySalesSnapshot", status: "error", records: 0, error: msg };
+  }
+}
+
 // Automated sync — excludes QB (QB requires manual trigger)
 export async function syncAll(): Promise<SyncResult[]> {
   const results = await Promise.allSettled([

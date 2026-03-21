@@ -192,6 +192,45 @@ export interface ShopifyOrderForSales {
   }>;
 }
 
+export async function getVariantCost(
+  variantId: number
+): Promise<{ cost: string | null; inventory_item_id: number }> {
+  const creds = await getCredentials();
+  const res = await fetch(
+    shopifyUrl(creds.domain, `/variants/${variantId}.json`),
+    { headers: getHeaders(creds.token) }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch variant ${variantId}`);
+  const data = await res.json();
+  return {
+    cost: data.variant?.cost || null,
+    inventory_item_id: data.variant?.inventory_item_id,
+  };
+}
+
+export async function updateVariantCost(
+  inventoryItemId: number,
+  cost: number
+): Promise<void> {
+  const creds = await getCredentials();
+  const res = await fetch(
+    shopifyUrl(creds.domain, `/inventory_items/${inventoryItemId}.json`),
+    {
+      method: "PUT",
+      headers: getHeaders(creds.token),
+      body: JSON.stringify({
+        inventory_item: { id: inventoryItemId, cost: cost.toFixed(4) },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `Failed to update inventory item cost: ${res.status} ${text}`
+    );
+  }
+}
+
 export async function fetchOrdersForSales(
   createdAtMin: string,
   createdAtMax: string

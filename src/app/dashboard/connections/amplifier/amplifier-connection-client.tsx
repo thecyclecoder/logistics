@@ -17,6 +17,7 @@ export default function AmplifierConnectionClient({
 }) {
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncVersion, setSyncVersion] = useState(0);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     message: string;
@@ -71,6 +72,7 @@ export default function AmplifierConnectionClient({
       setSyncResult({ ok: false, message: "Sync request failed" });
     } finally {
       setSyncing(false);
+      setSyncVersion((v) => v + 1);
     }
   };
 
@@ -166,7 +168,7 @@ export default function AmplifierConnectionClient({
       </div>
 
       {/* 3PL Review Table */}
-      <ThreePLReviewClient />
+      <ThreePLReviewClient key={syncVersion} />
     </div>
   );
 }

@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import QuickBooksConnectionClient from "./quickbooks-connection-client";
 
 export const revalidate = 0;
 
 export default async function QuickBooksConnectionPage() {
-  const supabase = createClient();
+  const supabase = createServiceClient();
 
   const { data: qbTokens } = await supabase
     .from("qb_tokens")

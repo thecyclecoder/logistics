@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Plug, CheckCircle2, XCircle } from "lucide-react";
 
@@ -12,7 +12,7 @@ interface ConnectionCard {
 }
 
 export default async function ConnectionsPage() {
-  const supabase = createClient();
+  const supabase = createServiceClient();
 
   // Check QuickBooks connection
   const { data: qbTokens } = await supabase

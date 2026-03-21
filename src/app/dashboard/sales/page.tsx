@@ -16,8 +16,6 @@ interface ProductSales {
   total_revenue: number;
   total_orders: number;
   asp: number;
-  aov: number;
-  avg_units_per_order: number;
   total_cost: number | null;
   margin: number | null;
 }
@@ -34,7 +32,6 @@ interface Totals {
   sub_checkout_units: number;
   one_time_units: number;
   asp: number;
-  aov: number;
   total_cost: number;
   margin: number;
 }
@@ -146,7 +143,7 @@ export default function SalesPage() {
       ) : (
         <>
           {totals && (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <p className="text-sm font-medium text-gray-500">Revenue</p>
                 <p className="mt-2 text-2xl font-semibold text-gray-900">{fmt(totals.revenue)}</p>
@@ -166,6 +163,11 @@ export default function SalesPage() {
                 <p className="text-sm font-medium text-gray-500">Sub Checkout</p>
                 <p className="mt-2 text-2xl font-semibold text-blue-600">{totals.sub_checkout_units.toLocaleString()}</p>
                 <p className="mt-1 text-xs text-blue-500">first-time sub</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5">
+                <p className="text-sm font-medium text-gray-500">One-Time</p>
+                <p className="mt-2 text-2xl font-semibold text-gray-900">{totals.one_time_units.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-gray-400">no subscription</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-5">
                 <p className="text-sm font-medium text-gray-500">Margin</p>
@@ -195,8 +197,6 @@ export default function SalesPage() {
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Units</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Revenue</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">ASP</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">AOV</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">Units/Order</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Cost</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">COGS</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Margin</th>
@@ -205,7 +205,7 @@ export default function SalesPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredItems.length === 0 ? (
-                    <tr><td colSpan={11} className="px-3 py-8 text-center text-gray-400">No sales data. Map products and sync sales.</td></tr>
+                    <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400">No sales data. Map products and sync sales.</td></tr>
                   ) : (
                     <>
                       {filteredItems.map((item) => {
@@ -227,8 +227,6 @@ export default function SalesPage() {
                             <td className="px-3 py-2.5 text-right font-medium text-gray-900">{item.total_units}</td>
                             <td className="px-3 py-2.5 text-right font-medium text-gray-900">{fmt(item.total_revenue)}</td>
                             <td className="px-3 py-2.5 text-right text-gray-700">{fmt2(item.asp)}</td>
-                            <td className="px-3 py-2.5 text-right text-gray-700">{fmt2(item.aov)}</td>
-                            <td className="px-3 py-2.5 text-right text-gray-700">{item.avg_units_per_order.toFixed(1)}</td>
                             <td className="px-3 py-2.5 text-right text-gray-600">
                               <span className="inline-flex items-center gap-0.5">
                                 {item.unit_cost !== null ? fmt2(item.unit_cost) : "—"}
@@ -260,8 +258,6 @@ export default function SalesPage() {
                           <td className="px-3 py-3 text-right text-gray-900">{totals.units}</td>
                           <td className="px-3 py-3 text-right text-gray-900">{fmt(totals.revenue)}</td>
                           <td className="px-3 py-3 text-right text-gray-700">{fmt2(totals.asp)}</td>
-                          <td className="px-3 py-3 text-right text-gray-700">{fmt2(totals.aov)}</td>
-                          <td className="px-3 py-3 text-right text-gray-700">{totals.orders > 0 ? (totals.units / totals.orders).toFixed(1) : "—"}</td>
                           <td className="px-3 py-3 text-right text-gray-600"></td>
                           <td className="px-3 py-3 text-right text-gray-600">{fmt(totals.total_cost)}</td>
                           <td className={`px-3 py-3 text-right ${totals.margin >= 50 ? "text-green-600" : totals.margin >= 30 ? "text-amber-600" : "text-red-600"}`}>

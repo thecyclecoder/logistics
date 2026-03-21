@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, BookOpen, CheckCircle2, AlertTriangle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 
 export default function SyncButton() {
   const [loading, setLoading] = useState(false);
-  const [qbLoading, setQbLoading] = useState(false);
   const [result, setResult] = useState<{
     message: string;
     type: "success" | "warning" | "error";
@@ -44,49 +43,16 @@ export default function SyncButton() {
     }
   };
 
-  const handleQBSync = async () => {
-    setQbLoading(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/sync/quickbooks", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        const r = data.results[0];
-        setResult(
-          r.status === "success"
-            ? { message: `QuickBooks synced: ${r.records} products updated`, type: "success" }
-            : { message: `QB sync error: ${r.error}`, type: "error" }
-        );
-      } else {
-        setResult({ message: `Error: ${data.error}`, type: "error" });
-      }
-    } catch {
-      setResult({ message: "QB sync request failed", type: "error" });
-    } finally {
-      setQbLoading(false);
-    }
-  };
-
-  const anyLoading = loading || qbLoading;
-
   return (
     <div>
       <div className="flex items-center gap-2">
         <button
           onClick={handleSync}
-          disabled={anyLoading}
+          disabled={loading}
           className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           {loading ? "Syncing..." : "Sync Inventory"}
-        </button>
-        <button
-          onClick={handleQBSync}
-          disabled={anyLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-        >
-          <BookOpen className={`h-4 w-4 ${qbLoading ? "animate-spin" : ""}`} />
-          {qbLoading ? "Syncing QB..." : "Sync QuickBooks"}
         </button>
       </div>
       {result && (

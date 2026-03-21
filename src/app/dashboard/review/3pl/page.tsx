@@ -1,4 +1,4 @@
-import ThreePLReviewClient from "./three-pl-review-client";
+import ThreePLReviewClient from "@/components/three-pl-review-client";
 
 export const revalidate = 0;
 

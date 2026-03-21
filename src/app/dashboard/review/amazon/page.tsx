@@ -1,4 +1,4 @@
-import AmazonReviewClient from "./amazon-review-client";
+import AmazonReviewClient from "@/components/amazon-review-client";
 
 export const revalidate = 0;
 

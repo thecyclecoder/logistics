@@ -10,10 +10,9 @@ import {
   Layers,
   DollarSign,
   Link2,
-  RefreshCw,
   LogOut,
   Package as LogoIcon,
-  ClipboardCheck,
+  Plug,
   Menu,
   X,
 } from "lucide-react";
@@ -24,9 +23,7 @@ const navItems = [
   { href: "/dashboard/inventory", label: "Inventory", icon: Package },
   { href: "/dashboard/sales", label: "Sales", icon: DollarSign },
   { href: "/dashboard/mapping", label: "SKU Mapping", icon: Link2 },
-  { href: "/dashboard/review/amazon", label: "Amazon Review", icon: ClipboardCheck },
-  { href: "/dashboard/review/3pl", label: "3PL Review", icon: ClipboardCheck },
-  { href: "/dashboard/sync", label: "Sync Status", icon: RefreshCw },
+  { href: "/dashboard/connections", label: "Connections", icon: Plug },
 ];
 
 export default function Sidebar({ email }: { email: string }) {

@@ -1,0 +1,104 @@
+import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import { Plug, CheckCircle2, XCircle } from "lucide-react";
+
+export const revalidate = 0;
+
+interface ConnectionCard {
+  name: string;
+  slug: string;
+  description: string;
+  connected: boolean;
+}
+
+export default async function ConnectionsPage() {
+  const supabase = createClient();
+
+  // Check QuickBooks connection
+  const { data: qbTokens } = await supabase
+    .from("qb_tokens")
+    .select("id")
+    .limit(1);
+  const qbConnected = (qbTokens && qbTokens.length > 0) || false;
+
+  const connections: ConnectionCard[] = [
+    {
+      name: "Amplifier",
+      slug: "amplifier",
+      description: "3PL fulfillment and inventory management",
+      connected: !!process.env.AMPLIFIER_API_KEY,
+    },
+    {
+      name: "Amazon",
+      slug: "amazon",
+      description: "Amazon Seller Central via SP-API",
+      connected: !!process.env.AMAZON_SP_CLIENT_ID,
+    },
+    {
+      name: "QuickBooks",
+      slug: "quickbooks",
+      description: "Accounting, products, and sales data",
+      connected: qbConnected,
+    },
+    {
+      name: "Shopify",
+      slug: "shopify",
+      description: "Storefront and order management",
+      connected: !!process.env.SHOPIFY_STORE_DOMAIN,
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Connections</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Manage integrations and sync data from connected services.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {connections.map((conn) => (
+          <Link
+            key={conn.slug}
+            href={`/dashboard/connections/${conn.slug}`}
+            className="rounded-xl border border-gray-200 bg-white p-5 hover:border-gray-300 hover:shadow-sm transition-all"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
+                  <Plug className="h-5 w-5 text-gray-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    {conn.name}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {conn.description}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {conn.connected ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <span className="text-xs font-medium text-green-700">
+                      Connected
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 text-gray-300" />
+                    <span className="text-xs font-medium text-gray-400">
+                      Not connected
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

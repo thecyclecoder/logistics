@@ -318,6 +318,20 @@ export async function sync3PLInventory(): Promise<SyncResult> {
         quantity: item.quantity_available,
       });
 
+      // Write to dedicated 3PL snapshot table
+      await supabase.from("tpl_inventory_snapshots").upsert(
+        {
+          sku: item.sku,
+          name: catalogItem?.name || null,
+          quantity_on_hand: item.quantity_on_hand,
+          quantity_available: item.quantity_available,
+          quantity_committed: item.quantity_committed,
+          quantity_expected: item.quantity_expected,
+          snapshot_date: new Date().toISOString().split("T")[0],
+        },
+        { onConflict: "sku,snapshot_date" }
+      );
+
       if (isDiscontinued) {
         const supabaseForStatus = createServiceClient();
         await supabaseForStatus
@@ -350,6 +364,41 @@ export async function sync3PLInventory(): Promise<SyncResult> {
     const msg = err instanceof Error ? err.message : String(err);
     await finishLog(logId, "error", 0, msg);
     return { job: "sync3PLInventory", status: "error", records: 0, error: msg };
+  }
+}
+
+export async function sync3PLSnapshot(): Promise<SyncResult> {
+  const logId = await startLog("sync3PLSnapshot");
+  try {
+    const items = await amplifier.fetchInventory();
+    const catalogItems = await amplifier.fetchAllItems();
+    const nameMap = new Map(catalogItems.map((ci) => [ci.sku, ci.name]));
+    const supabase = createServiceClient();
+    const today = new Date().toISOString().split("T")[0];
+    let count = 0;
+
+    for (const item of items) {
+      await supabase.from("tpl_inventory_snapshots").upsert(
+        {
+          sku: item.sku,
+          name: nameMap.get(item.sku) || null,
+          quantity_on_hand: item.quantity_on_hand,
+          quantity_available: item.quantity_available,
+          quantity_committed: item.quantity_committed,
+          quantity_expected: item.quantity_expected,
+          snapshot_date: today,
+        },
+        { onConflict: "sku,snapshot_date" }
+      );
+      count++;
+    }
+
+    await finishLog(logId, "success", count);
+    return { job: "sync3PLSnapshot", status: "success", records: count };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await finishLog(logId, "error", 0, msg);
+    return { job: "sync3PLSnapshot", status: "error", records: 0, error: msg };
   }
 }
 

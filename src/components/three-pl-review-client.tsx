@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Search, Check, Eye, EyeOff, Archive, Link2 } from "lucide-react";
+import { Search, Check, Eye, EyeOff, Archive, Link2, AlertTriangle } from "lucide-react";
 import QuickMapModal from "@/components/quick-map-modal";
 
 interface ExternalSku {
@@ -25,6 +25,8 @@ export default function ThreePLReviewClient() {
   const [filter, setFilter] = useState<FilterKey>("unmapped");
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [mappingSku, setMappingSku] = useState<ExternalSku | null>(null);
+  const [snapshotData, setSnapshotData] = useState<Map<string, { on_hand: number; committed: number; expected: number; snapshot_date: string }>>(new Map());
+  const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/external-skus?source=3pl&include_all=true")
@@ -32,6 +34,24 @@ export default function ThreePLReviewClient() {
       .then((data) => {
         if (Array.isArray(data)) setSkus(data);
         setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/3pl-snapshot")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.warning) setSnapshotWarning(data.warning);
+        const map = new Map<string, { on_hand: number; committed: number; expected: number; snapshot_date: string }>();
+        for (const item of data.items || []) {
+          map.set(item.sku, {
+            on_hand: item.quantity_on_hand,
+            committed: item.quantity_committed,
+            expected: item.quantity_expected,
+            snapshot_date: item.snapshot_date,
+          });
+        }
+        setSnapshotData(map);
       });
   }, []);
 
@@ -102,6 +122,13 @@ export default function ThreePLReviewClient() {
         </div>
       </div>
 
+      {snapshotWarning && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          {snapshotWarning}
+        </div>
+      )}
+
       {filter === "unmapped" && (
         <button onClick={dismissAllZero} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
           <EyeOff className="h-3.5 w-3.5" /> Dismiss all with 0 inventory
@@ -116,20 +143,28 @@ export default function ThreePLReviewClient() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">SKU</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Name</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Available</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">On Hand</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">Committed</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">Expected</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                   {filter === "unmapped" ? "All 3PL SKUs have been reviewed!" : "No SKUs match your filter."}
                 </td></tr>
-              ) : filtered.map((sku) => (
+              ) : filtered.map((sku) => {
+                const snapshot = snapshotData.get(sku.external_id);
+                return (
                 <tr key={sku.id} className={`hover:bg-gray-50 ${sku.status !== "active" && !sku.mapped ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-mono text-sm text-gray-900">{sku.external_id}</td>
                   <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{sku.title || "—"}</td>
                   <td className={`px-4 py-3 text-right font-medium ${(sku.quantity ?? 0) === 0 ? "text-gray-300" : "text-gray-900"}`}>{sku.quantity ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{snapshot?.on_hand ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{snapshot?.committed ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{snapshot?.expected ?? "—"}</td>
                   <td className="px-4 py-3">
                     {sku.mapped ? (
                       <div>
@@ -168,7 +203,8 @@ export default function ThreePLReviewClient() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

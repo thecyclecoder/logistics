@@ -27,6 +27,7 @@ interface ExternalSku {
   title: string | null;
   image_url: string | null;
   price: number | null;
+  quantity: number | null;
   parent_asin: string | null;
   item_type: string | null;
   mapped: boolean;
@@ -588,12 +589,24 @@ export default function MappingClient({
                                               ${sku.price.toFixed(2)}
                                             </span>
                                           )}
+                                          {sku.quantity != null && (
+                                            <span className={`text-xs font-medium ${sku.quantity > 0 ? "text-green-600" : "text-gray-300"}`}>
+                                              {sku.quantity} in stock
+                                            </span>
+                                          )}
                                         </div>
                                       </>
                                     ) : (
-                                      <span className="font-mono truncate text-gray-900">
-                                        {sku.external_id}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-mono truncate text-gray-900">
+                                          {sku.external_id}
+                                        </span>
+                                        {sku.quantity != null && (
+                                          <span className={`text-xs font-medium ${sku.quantity > 0 ? "text-green-600" : "text-gray-300"}`}>
+                                            {sku.quantity} in stock
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                   {alreadyMapped ? (

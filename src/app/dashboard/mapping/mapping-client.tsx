@@ -164,6 +164,10 @@ export default function MappingClient({
       if (res.ok) {
         const created = await res.json();
         setMappings((prev) => [created, ...prev]);
+      } else {
+        const err = await res.json();
+        const msg = typeof err.error === "string" ? err.error : "Failed to create mapping";
+        alert(msg);
         // Update external SKU as mapped
         setExternalSkus((prev) =>
           prev.map((s) =>

@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/3pl-snapshot",
       "schedule": "1 0 * * *"
+    },
+    {
+      "path": "/api/cron/amazon-sales",
+      "schedule": "30 6 * * *"
     }
   ]
 }

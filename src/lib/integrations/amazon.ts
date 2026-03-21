@@ -289,3 +289,109 @@ export async function fetchCatalogItems(
 
   return results;
 }
+
+// --- Reports API for sales data ---
+
+export interface AmazonOrderReportRow {
+  orderId: string;
+  purchaseDate: string;
+  orderStatus: string;
+  sku: string;
+  asin: string;
+  productName: string;
+  quantity: number;
+  itemPrice: number;
+  promotionIds: string;
+}
+
+export async function fetchOrderReport(
+  startDate: string,
+  endDate: string
+): Promise<AmazonOrderReportRow[]> {
+  const token = await getAccessToken();
+
+  // Request report
+  const reportRes = await fetch(`${SP_API_BASE}/reports/2021-06-30/reports`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "x-amz-access-token": token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      reportType: "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL",
+      marketplaceIds: [await getMarketplaceId()],
+      dataStartTime: startDate,
+      dataEndTime: endDate,
+    }),
+  });
+
+  if (!reportRes.ok) {
+    const text = await reportRes.text();
+    throw new Error(`Report request failed: ${reportRes.status} ${text}`);
+  }
+
+  const { reportId } = await reportRes.json();
+
+  // Poll for completion
+  let processingStatus = "IN_PROGRESS";
+  let reportDocumentId: string | null = null;
+
+  while (processingStatus === "IN_PROGRESS" || processingStatus === "IN_QUEUE") {
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const statusRes = await fetch(
+      `${SP_API_BASE}/reports/2021-06-30/reports/${reportId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-amz-access-token": token,
+        },
+      }
+    );
+    const statusData = await statusRes.json();
+    processingStatus = statusData.processingStatus;
+    reportDocumentId = statusData.reportDocumentId;
+  }
+
+  if (processingStatus !== "DONE" || !reportDocumentId) {
+    throw new Error(`Report failed with status: ${processingStatus}`);
+  }
+
+  // Download
+  const docRes = await fetch(
+    `${SP_API_BASE}/reports/2021-06-30/documents/${reportDocumentId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "x-amz-access-token": token,
+      },
+    }
+  );
+  const docData = await docRes.json();
+  const reportText = await (await fetch(docData.url)).text();
+
+  // Parse TSV
+  const lines = reportText.split("\n");
+  const headers = lines[0].split("\t");
+  const idx = (name: string) => headers.indexOf(name);
+
+  const rows: AmazonOrderReportRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cols = lines[i].split("\t");
+    rows.push({
+      orderId: cols[idx("amazon-order-id")] || "",
+      purchaseDate: cols[idx("purchase-date")] || "",
+      orderStatus: (cols[idx("order-status")] || "").trim(),
+      sku: cols[idx("sku")] || "",
+      asin: cols[idx("asin")] || "",
+      productName: cols[idx("product-name")] || "",
+      quantity: parseInt(cols[idx("quantity")]) || 0,
+      itemPrice: parseFloat(cols[idx("item-price")]) || 0,
+      promotionIds: (cols[idx("promotion-ids")] || "").trim(),
+    });
+  }
+
+  return rows;
+}

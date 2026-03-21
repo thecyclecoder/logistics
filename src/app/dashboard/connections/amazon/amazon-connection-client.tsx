@@ -17,6 +17,7 @@ export default function AmazonConnectionClient({
 }) {
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingSales, setSyncingSales] = useState(false);
   const [syncVersion, setSyncVersion] = useState(0);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -70,6 +71,30 @@ export default function AmazonConnectionClient({
     } finally {
       setSyncing(false);
       setSyncVersion((v) => v + 1);
+    }
+  };
+
+  const handleSyncSales = async () => {
+    setSyncingSales(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/sync/amazon-sales", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setSyncResult({
+          ok: true,
+          message: `Sales snapshot: ${data.records} ASIN-days captured`,
+        });
+      } else {
+        setSyncResult({
+          ok: false,
+          message: data.error || "Sales sync failed",
+        });
+      }
+    } catch {
+      setSyncResult({ ok: false, message: "Sales sync request failed" });
+    } finally {
+      setSyncingSales(false);
     }
   };
 
@@ -128,6 +153,16 @@ export default function AmazonConnectionClient({
               className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
             />
             {syncing ? "Syncing..." : "Sync Amazon Inventory"}
+          </button>
+          <button
+            onClick={handleSyncSales}
+            disabled={syncingSales || !initialConnected}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${syncingSales ? "animate-spin" : ""}`}
+            />
+            {syncingSales ? "Syncing..." : "Sync Sales (Last 7 Days)"}
           </button>
         </div>
 

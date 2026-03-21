@@ -306,11 +306,10 @@ export async function sync3PLInventory(): Promise<SyncResult> {
       });
 
       if (isDiscontinued) {
-        // Auto-dismiss discontinued items
-        const supabaseForDismiss = createServiceClient();
-        await supabaseForDismiss
+        const supabaseForStatus = createServiceClient();
+        await supabaseForStatus
           .from("external_skus")
-          .update({ dismissed: true })
+          .update({ status: "discontinued" })
           .eq("external_id", item.sku)
           .eq("source", "3pl");
         continue;

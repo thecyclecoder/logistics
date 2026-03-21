@@ -4,20 +4,23 @@ import { createServiceClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("source") || "";
-  const includeDismissed = searchParams.get("include_dismissed") === "true";
+  const includeAll = searchParams.get("include_all") === "true";
+  const statusFilter = searchParams.get("status") || "";
 
   const supabase = createServiceClient();
   let query = supabase
     .from("external_skus")
-    .select("id, external_id, source, label, title, image_url, price, parent_asin, item_type, quantity, seller_sku, dismissed")
+    .select("id, external_id, source, label, title, image_url, price, parent_asin, item_type, quantity, seller_sku, status")
     .order("external_id");
 
   if (source) {
     query = query.eq("source", source);
   }
 
-  if (!includeDismissed) {
-    query = query.eq("dismissed", false);
+  if (statusFilter) {
+    query = query.eq("status", statusFilter);
+  } else if (!includeAll) {
+    query = query.eq("status", "active");
   }
 
   const { data, error } = await query;
@@ -51,16 +54,16 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { ids, dismissed } = body as { ids: string[]; dismissed: boolean };
+  const { ids, status } = body as { ids: string[]; status: string };
 
-  if (!ids?.length) {
-    return NextResponse.json({ error: "ids required" }, { status: 400 });
+  if (!ids?.length || !status) {
+    return NextResponse.json({ error: "ids and status required" }, { status: 400 });
   }
 
   const supabase = createServiceClient();
   const { error } = await supabase
     .from("external_skus")
-    .update({ dismissed })
+    .update({ status })
     .in("id", ids);
 
   if (error) {

@@ -46,12 +46,19 @@ export async function GET(request: NextRequest) {
   const tokens = await res.json();
 
   const supabase = createServiceClient();
-  await supabase.from("qb_tokens").upsert({
+  const { error: upsertError } = await supabase.from("qb_tokens").upsert({
     id: "current",
     refresh_token: tokens.refresh_token,
     realm_id: realmId,
     updated_at: new Date().toISOString(),
   });
+
+  if (upsertError) {
+    return NextResponse.json(
+      { error: "Failed to store tokens", details: upsertError.message },
+      { status: 500 }
+    );
+  }
 
   const { origin } = new URL(request.url);
   return NextResponse.redirect(`${origin}/dashboard/connections/quickbooks`);

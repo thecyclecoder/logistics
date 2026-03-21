@@ -27,6 +27,7 @@ export default function AmazonReviewClient() {
   const [filter, setFilter] = useState<FilterKey>("unmapped");
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [mappingSku, setMappingSku] = useState<ExternalSku | null>(null);
+  const [mtdSales, setMtdSales] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch("/api/external-skus?source=amazon&include_all=true")
@@ -34,6 +35,14 @@ export default function AmazonReviewClient() {
       .then((data) => {
         if (Array.isArray(data)) setSkus(data);
         setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/amazon-sales-mtd")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && typeof data === "object" && !data.error) setMtdSales(data);
       });
   }, []);
 
@@ -124,6 +133,7 @@ export default function AmazonReviewClient() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">ASIN</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Seller SKU</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">FBA Qty</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">MTD Sold</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Price</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Action</th>
@@ -131,7 +141,7 @@ export default function AmazonReviewClient() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   {filter === "unmapped" ? "All Amazon listings have been reviewed!" : "No listings match your filter."}
                 </td></tr>
               ) : filtered.map((sku) => (
@@ -147,6 +157,7 @@ export default function AmazonReviewClient() {
                   <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{sku.external_id}</td>
                   <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{sku.seller_sku || "—"}</td>
                   <td className={`px-4 py-2.5 text-right font-medium ${(sku.quantity ?? 0) === 0 ? "text-gray-300" : "text-gray-900"}`}>{sku.quantity ?? "—"}</td>
+                  <td className={`px-4 py-2.5 text-right font-medium ${(mtdSales[sku.external_id] || 0) === 0 ? "text-gray-300" : "text-brand-700"}`}>{mtdSales[sku.external_id] || 0}</td>
                   <td className="px-4 py-2.5 text-right text-gray-600">{sku.price ? `$${sku.price.toFixed(2)}` : "—"}</td>
                   <td className="px-4 py-2.5">
                     {sku.mapped ? (

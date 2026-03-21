@@ -1,13 +1,42 @@
+import { createServiceClient } from "@/lib/supabase/server";
+
 const API_VERSION = "2024-01";
 
-function shopifyUrl(path: string): string {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN!;
+let cachedCreds: { domain: string; token: string } | null = null;
+
+async function getCredentials(): Promise<{ domain: string; token: string }> {
+  if (cachedCreds) return cachedCreds;
+
+  // Try DB first, fall back to env vars
+  try {
+    const supabase = createServiceClient();
+    const { data } = await supabase
+      .from("shopify_tokens")
+      .select("shop_domain, access_token")
+      .eq("id", "current")
+      .single();
+    if (data) {
+      cachedCreds = { domain: data.shop_domain, token: data.access_token };
+      return cachedCreds;
+    }
+  } catch {}
+
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const token = process.env.SHOPIFY_ACCESS_TOKEN;
+  if (!domain || !token) {
+    throw new Error("Shopify not connected. Connect at /dashboard/connections/shopify");
+  }
+  cachedCreds = { domain, token };
+  return cachedCreds;
+}
+
+function shopifyUrl(domain: string, path: string): string {
   return `https://${domain}/admin/api/${API_VERSION}${path}`;
 }
 
-function getHeaders(): Record<string, string> {
+function getHeaders(token: string): Record<string, string> {
   return {
-    "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN!,
+    "X-Shopify-Access-Token": token,
     "Content-Type": "application/json",
   };
 }
@@ -47,13 +76,15 @@ export async function fetchOrders(
   createdAtMin: string,
   createdAtMax: string
 ): Promise<ShopifyOrder[]> {
+  const creds = await getCredentials();
   const orders: ShopifyOrder[] = [];
   let url: string | null = shopifyUrl(
+    creds.domain,
     `/orders.json?status=any&created_at_min=${createdAtMin}&created_at_max=${createdAtMax}&limit=250`
   );
 
   while (url) {
-    const res: Response = await fetch(url, { headers: getHeaders() });
+    const res: Response = await fetch(url, { headers: getHeaders(creds.token) });
 
     if (!res.ok) {
       const text = await res.text();
@@ -86,11 +117,12 @@ export interface ShopifyVariant {
 }
 
 export async function fetchProductVariants(): Promise<ShopifyVariant[]> {
+  const creds = await getCredentials();
   const variants: ShopifyVariant[] = [];
-  let url: string | null = shopifyUrl(`/products.json?limit=250`);
+  let url: string | null = shopifyUrl(creds.domain, `/products.json?limit=250`);
 
   while (url) {
-    const res: Response = await fetch(url, { headers: getHeaders() });
+    const res: Response = await fetch(url, { headers: getHeaders(creds.token) });
 
     if (!res.ok) {
       const text = await res.text();

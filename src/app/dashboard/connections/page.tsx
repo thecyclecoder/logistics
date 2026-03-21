@@ -21,6 +21,15 @@ export default async function ConnectionsPage() {
     .limit(1);
   const qbConnected = (qbTokens && qbTokens.length > 0) || false;
 
+  // Check Shopify connection
+  const { data: shopifyTokens } = await supabase
+    .from("shopify_tokens")
+    .select("id")
+    .limit(1);
+  const shopifyConnected =
+    (shopifyTokens && shopifyTokens.length > 0) ||
+    !!process.env.SHOPIFY_STORE_DOMAIN;
+
   const connections: ConnectionCard[] = [
     {
       name: "Amplifier",
@@ -44,7 +53,7 @@ export default async function ConnectionsPage() {
       name: "Shopify",
       slug: "shopify",
       description: "Storefront and order management",
-      connected: !!process.env.SHOPIFY_STORE_DOMAIN,
+      connected: shopifyConnected,
     },
   ];
 

@@ -10,9 +10,11 @@ import {
 export default function ShopifyConnectionClient({
   initialConnected,
   storeDomain,
+  lastRefresh,
 }: {
   initialConnected: boolean;
   storeDomain: string | null;
+  lastRefresh: string | null;
 }) {
   return (
     <div className="space-y-8">
@@ -49,16 +51,24 @@ export default function ShopifyConnectionClient({
         </div>
 
         {initialConnected && storeDomain && (
-          <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3">
+          <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3 space-y-1">
             <div className="flex items-center gap-2 text-sm">
               <span className="text-gray-500">Store domain:</span>
               <span className="font-mono text-gray-700">{storeDomain}</span>
             </div>
+            {lastRefresh && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-500">Connected:</span>
+                <span className="text-gray-700">
+                  {new Date(lastRefresh).toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          {!initialConnected && (
+          {!initialConnected ? (
             <a
               href="/api/shopify/connect"
               className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
@@ -66,17 +76,15 @@ export default function ShopifyConnectionClient({
               <Plug className="h-4 w-4" />
               Connect Shopify
             </a>
+          ) : (
+            <a
+              href="/api/shopify/connect"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Reconnect
+            </a>
           )}
         </div>
-
-        {/* Placeholder for future Shopify review table */}
-        {initialConnected && (
-          <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <p className="text-sm text-gray-400">
-              Shopify review table coming soon
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

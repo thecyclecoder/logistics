@@ -20,6 +20,7 @@ export default function ShopifyConnectionClient({
   lastRefresh: string | null;
 }) {
   const [syncing, setSyncing] = useState(false);
+  const [syncVersion, setSyncVersion] = useState(0);
   const [syncResult, setSyncResult] = useState<{
     message: string;
     type: "success" | "error";
@@ -46,6 +47,7 @@ export default function ShopifyConnectionClient({
       setSyncResult({ message: "Sync request failed", type: "error" });
     } finally {
       setSyncing(false);
+      setSyncVersion((v) => v + 1);
     }
   };
 
@@ -143,7 +145,7 @@ export default function ShopifyConnectionClient({
         )}
       </div>
 
-      {initialConnected && <ShopifyReviewClient />}
+      {initialConnected && <ShopifyReviewClient key={syncVersion} />}
     </div>
   );
 }

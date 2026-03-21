@@ -80,6 +80,13 @@ export async function syncQBProducts(): Promise<SyncResult> {
     const supabase = createServiceClient();
     let count = 0;
 
+    // Fetch images for all items
+    const allItemIds = [
+      ...inventory.map((i) => i.Id),
+      ...groups.map((g) => g.Id),
+    ];
+    const imageMap = await qb.fetchItemImages(allItemIds);
+
     // 1. Upsert inventory items
     for (const item of inventory) {
       const { error } = await supabase
@@ -92,6 +99,7 @@ export async function syncQBProducts(): Promise<SyncResult> {
             unit_cost: item.PurchaseCost || null,
             active: item.Active,
             item_type: "inventory",
+            image_url: imageMap.get(item.Id) || null,
           },
           { onConflict: "quickbooks_id" }
         );
@@ -140,6 +148,7 @@ export async function syncQBProducts(): Promise<SyncResult> {
             unit_cost: group.PurchaseCost || null,
             active: group.Active,
             item_type: "bundle",
+            image_url: imageMap.get(group.Id) || null,
           },
           { onConflict: "quickbooks_id" }
         );

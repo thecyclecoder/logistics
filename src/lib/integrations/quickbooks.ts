@@ -146,6 +146,50 @@ export async function updateItem(
   return data.Item;
 }
 
+export async function fetchItemImages(
+  itemIds: string[]
+): Promise<Map<string, string>> {
+  const { token, realmId } = await getRealmAndToken();
+  const imageMap = new Map<string, string>();
+
+  // Query attachables for all items in batches
+  for (let i = 0; i < itemIds.length; i += 50) {
+    const batch = itemIds.slice(i, i + 50);
+    const inList = batch.map((id) => `'${id}'`).join(",");
+    const query = encodeURIComponent(
+      `SELECT * FROM Attachable WHERE AttachableRef.EntityRef.Type = 'Item' AND AttachableRef.EntityRef.value IN (${inList}) MAXRESULTS 1000`
+    );
+
+    const res = await fetch(
+      `${await baseUrl()}/v3/company/${realmId}/query?query=${query}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (!res.ok) continue;
+
+    const data = await res.json();
+    for (const att of data.QueryResponse?.Attachable || []) {
+      if (!att.TempDownloadUri) continue;
+      // Find which item this attachment belongs to
+      for (const ref of att.AttachableRef || []) {
+        if (ref.EntityRef?.type === "Item" && ref.EntityRef?.value) {
+          // Only store first image per item
+          if (!imageMap.has(ref.EntityRef.value)) {
+            imageMap.set(ref.EntityRef.value, att.TempDownloadUri);
+          }
+        }
+      }
+    }
+  }
+
+  return imageMap;
+}
+
 export interface QBGroupLine {
   ItemRef: { value: string; name: string; type: string };
   Qty: number;

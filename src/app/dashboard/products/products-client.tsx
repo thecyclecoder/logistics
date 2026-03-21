@@ -345,9 +345,13 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
                   return (
                     <div key={fg.id} className="rounded-xl border border-gray-200 bg-white">
                       <div className="flex items-start gap-3 px-5 py-3.5 bg-gradient-to-r from-brand-50 to-white border-b border-gray-100 rounded-t-xl">
-                        <div className="h-8 w-8 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Layers className="h-4 w-4 text-brand-600" />
-                        </div>
+                        {fg.image_url ? (
+                          <img src={fg.image_url} alt="" className="h-10 w-10 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                        ) : (
+                          <div className="h-10 w-10 rounded-lg bg-brand-100 flex items-center justify-center flex-shrink-0">
+                            <Layers className="h-4 w-4 text-brand-600" />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold text-gray-900 truncate">{fg.quickbooks_name}</p>
@@ -393,16 +397,21 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
               <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
                 {standaloneFinished.map((p) => (
                   <div key={p.id} className="px-5 py-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {p.image_url ? (
+                        <img src={p.image_url} alt="" className="h-10 w-10 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-gray-100 flex-shrink-0" />
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-gray-900">{p.quickbooks_name}</p>
                           <span className="text-xs text-gray-400 font-mono">{p.sku || "—"}</span>
                         </div>
+                        <div className="mt-1.5">{renderMappings(p.id)}</div>
                       </div>
                       {renderCategoryBadge(p)}
                     </div>
-                    <div className="mt-2">{renderMappings(p.id)}</div>
                   </div>
                 ))}
               </div>
@@ -422,7 +431,12 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
                   );
                   return (
                     <div key={p.id} className="px-5 py-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt="" className="h-10 w-10 rounded-lg object-contain bg-white border border-gray-100 flex-shrink-0" />
+                        ) : (
+                          <div className="h-10 w-10 rounded-lg bg-gray-100 flex-shrink-0" />
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-gray-900">{p.quickbooks_name}</p>

@@ -25,14 +25,13 @@ export default function ThreePLReviewClient() {
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const needsAll = filter === "dismissed" || filter === "discontinued" || filter === "all";
-    fetch(`/api/external-skus?source=3pl${needsAll ? "&include_all=true" : ""}`)
+    fetch("/api/external-skus?source=3pl&include_all=true")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setSkus(data);
         setLoading(false);
       });
-  }, [filter]);
+  }, []);
 
   const filtered = useMemo(() => {
     let list = skus;

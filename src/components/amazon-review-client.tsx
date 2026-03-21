@@ -27,14 +27,13 @@ export default function AmazonReviewClient() {
   const [saving, setSaving] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const needsAll = filter === "dismissed" || filter === "discontinued" || filter === "all";
-    fetch(`/api/external-skus?source=amazon${needsAll ? "&include_all=true" : ""}`)
+    fetch("/api/external-skus?source=amazon&include_all=true")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setSkus(data);
         setLoading(false);
       });
-  }, [filter]);
+  }, []);
 
   const filtered = useMemo(() => {
     let list = skus;

@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { getCredentials } from "@/lib/credentials";
 
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 const QB_TOKENS_TABLE = "qb_tokens";
@@ -45,9 +46,8 @@ async function getAccessToken(): Promise<string> {
     return cachedToken.access_token;
   }
 
-  // Try DB-stored token first, fall back to env var
   const stored = await getStoredTokens();
-  const refreshToken = stored.refresh_token || process.env.QB_REFRESH_TOKEN;
+  const refreshToken = stored.refresh_token;
 
   if (!refreshToken) {
     throw new Error(
@@ -55,8 +55,9 @@ async function getAccessToken(): Promise<string> {
     );
   }
 
+  const creds = await getCredentials("quickbooks");
   const basicAuth = Buffer.from(
-    `${process.env.QB_CLIENT_ID}:${process.env.QB_CLIENT_SECRET}`
+    `${creds.client_id}:${creds.client_secret}`
   ).toString("base64");
 
   const res = await fetch(QB_TOKEN_URL, {
@@ -92,8 +93,9 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-function baseUrl(): string {
-  return process.env.QB_ENVIRONMENT === "production"
+async function baseUrl(): Promise<string> {
+  const creds = await getCredentials("quickbooks");
+  return creds.environment === "production"
     ? "https://quickbooks.api.intuit.com"
     : "https://sandbox-quickbooks.api.intuit.com";
 }
@@ -112,7 +114,7 @@ export async function updateItem(
   const merged = { ...current, ...updates };
 
   const res = await fetch(
-    `${baseUrl()}/v3/company/${realmId}/item?minorversion=65`,
+    `${await baseUrl()}/v3/company/${realmId}/item?minorversion=65`,
     {
       method: "POST",
       headers: {
@@ -180,7 +182,7 @@ async function queryItems(
     );
 
     const res = await fetch(
-      `${baseUrl()}/v3/company/${realmId}/query?query=${query}`,
+      `${await baseUrl()}/v3/company/${realmId}/query?query=${query}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -211,7 +213,7 @@ export async function fetchItemById(
   itemId: string
 ): Promise<QBItem> {
   const res = await fetch(
-    `${baseUrl()}/v3/company/${realmId}/item/${itemId}?minorversion=65`,
+    `${await baseUrl()}/v3/company/${realmId}/item/${itemId}?minorversion=65`,
     {
       headers: {
         Authorization: `Bearer ${token}`,

@@ -1,9 +1,10 @@
-const API_BASE = "https://api.amplifier.com";
-const API_KEY = process.env.AMPLIFIER_API_KEY || "";
+import { getCredentials } from "@/lib/credentials";
 
-function getHeaders(): Record<string, string> {
-  // HTTP Basic Auth: API key as username, no password
-  const basicAuth = Buffer.from(`${API_KEY}:`).toString("base64");
+const API_BASE = "https://api.amplifier.com";
+
+async function getHeaders(): Promise<Record<string, string>> {
+  const creds = await getCredentials("amplifier");
+  const basicAuth = Buffer.from(`${creds.api_key}:`).toString("base64");
   return {
     Authorization: `Basic ${basicAuth}`,
     "Content-Type": "application/json",
@@ -22,7 +23,7 @@ export interface AmplifierInventoryItem {
 
 export async function fetchInventory(): Promise<AmplifierInventoryItem[]> {
   const res: Response = await fetch(`${API_BASE}/reports/inventory/current`, {
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   if (!res.ok) {
@@ -83,7 +84,7 @@ export async function createOrder(
 ): Promise<{ id: string }> {
   const res: Response = await fetch(`${API_BASE}/orders`, {
     method: "POST",
-    headers: getHeaders(),
+    headers: await getHeaders(),
     body: JSON.stringify(payload),
   });
 
@@ -141,7 +142,7 @@ export async function listItems(params?: {
   if (params?.per_page) qs.set("per_page", String(params.per_page));
 
   const res: Response = await fetch(`${API_BASE}/items/?${qs}`, {
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   if (!res.ok) {
@@ -168,7 +169,7 @@ export async function fetchAllItems(): Promise<AmplifierItem[]> {
 
 export async function fetchItem(id: string): Promise<AmplifierItem> {
   const res: Response = await fetch(`${API_BASE}/items/${id}`, {
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   if (!res.ok) {
@@ -204,7 +205,7 @@ export async function fetchShipmentsByDate(
 
   const res: Response = await fetch(
     `${API_BASE}/reports/shipments/${dateStr}`,
-    { headers: getHeaders() }
+    { headers: await getHeaders() }
   );
 
   if (!res.ok) {

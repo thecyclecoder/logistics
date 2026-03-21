@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getCredentials } from "@/lib/credentials";
 
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 
@@ -15,8 +16,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const creds = await getCredentials("quickbooks");
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
   const basicAuth = Buffer.from(
-    `${process.env.QB_CLIENT_ID}:${process.env.QB_CLIENT_SECRET}`
+    `${creds.client_id}:${creds.client_secret}`
   ).toString("base64");
 
   const res = await fetch(QB_TOKEN_URL, {
@@ -28,7 +31,7 @@ export async function GET(request: NextRequest) {
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: `${process.env.NEXT_PUBLIC_SITE_URL}/api/qb/callback`,
+      redirect_uri: `${baseUrl}/api/qb/callback`,
     }),
   });
 
@@ -42,7 +45,6 @@ export async function GET(request: NextRequest) {
 
   const tokens = await res.json();
 
-  // Store refresh token in Supabase so it auto-rotates
   const supabase = createServiceClient();
   await supabase.from("qb_tokens").upsert({
     id: "current",
@@ -52,5 +54,5 @@ export async function GET(request: NextRequest) {
   });
 
   const { origin } = new URL(request.url);
-  return NextResponse.redirect(`${origin}/dashboard`);
+  return NextResponse.redirect(`${origin}/dashboard/connections/quickbooks`);
 }

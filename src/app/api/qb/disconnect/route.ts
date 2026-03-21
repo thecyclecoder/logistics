@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getCredentials } from "@/lib/credentials";
 
 const QB_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
 
 export async function GET() {
-  if (!process.env.QB_REFRESH_TOKEN) {
+  const supabase = createServiceClient();
+  const { data: tokens } = await supabase
+    .from("qb_tokens")
+    .select("refresh_token")
+    .eq("id", "current")
+    .single();
+
+  if (!tokens?.refresh_token) {
     return NextResponse.json({ status: "no token to revoke" });
   }
 
+  const creds = await getCredentials("quickbooks");
   const basicAuth = Buffer.from(
-    `${process.env.QB_CLIENT_ID}:${process.env.QB_CLIENT_SECRET}`
+    `${creds.client_id}:${creds.client_secret}`
   ).toString("base64");
 
   const res = await fetch(QB_REVOKE_URL, {
@@ -18,7 +28,7 @@ export async function GET() {
       Authorization: `Basic ${basicAuth}`,
     },
     body: new URLSearchParams({
-      token: process.env.QB_REFRESH_TOKEN,
+      token: tokens.refresh_token,
     }),
   });
 
@@ -29,6 +39,9 @@ export async function GET() {
       { status: 500 }
     );
   }
+
+  // Clean up tokens
+  await supabase.from("qb_tokens").delete().eq("id", "current");
 
   return NextResponse.json({ status: "disconnected" });
 }

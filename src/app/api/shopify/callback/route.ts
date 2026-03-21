@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getCredentials } from "@/lib/credentials";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -13,12 +14,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const creds = await getCredentials("shopify");
+
   const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_id: process.env.SHOPIFY_CLIENT_ID!,
-      client_secret: process.env.SHOPIFY_CLIENT_SECRET!,
+      client_id: creds.client_id,
+      client_secret: creds.client_secret,
       code,
     }),
   });

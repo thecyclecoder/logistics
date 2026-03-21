@@ -1,22 +1,30 @@
+import { getCredentials } from "@/lib/credentials";
+
 const LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token";
 const SP_API_BASE = "https://sellingpartnerapi-na.amazon.com";
-const MARKETPLACE_ID = process.env.AMAZON_MARKETPLACE_ID || "ATVPDKIKX0DER";
 
 let cachedToken: { access_token: string; expires_at: number } | null = null;
+
+async function getMarketplaceId(): Promise<string> {
+  const creds = await getCredentials("amazon");
+  return creds.marketplace_id || "ATVPDKIKX0DER";
+}
 
 async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expires_at - 60_000) {
     return cachedToken.access_token;
   }
 
+  const creds = await getCredentials("amazon");
+
   const res = await fetch(LWA_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: process.env.AMAZON_SP_REFRESH_TOKEN!,
-      client_id: process.env.AMAZON_SP_CLIENT_ID!,
-      client_secret: process.env.AMAZON_SP_CLIENT_SECRET!,
+      refresh_token: creds.refresh_token,
+      client_id: creds.client_id,
+      client_secret: creds.client_secret,
     }),
   });
 
@@ -45,6 +53,7 @@ export interface FBAInventorySummary {
 
 export async function fetchFBAInventory(): Promise<FBAInventorySummary[]> {
   const token = await getAccessToken();
+  const marketplaceId = await getMarketplaceId();
   const summaries: FBAInventorySummary[] = [];
   let nextToken: string | null = null;
 
@@ -52,8 +61,8 @@ export async function fetchFBAInventory(): Promise<FBAInventorySummary[]> {
     const params = new URLSearchParams({
       details: "true",
       granularityType: "Marketplace",
-      granularityId: MARKETPLACE_ID,
-      marketplaceIds: MARKETPLACE_ID,
+      granularityId: marketplaceId,
+      marketplaceIds: marketplaceId,
     });
     if (nextToken) params.set("nextToken", nextToken);
 
@@ -125,12 +134,13 @@ export async function fetchOrders(
   createdBefore: string
 ): Promise<AmazonOrder[]> {
   const token = await getAccessToken();
+  const marketplaceId = await getMarketplaceId();
   const orders: AmazonOrder[] = [];
   let nextToken: string | null = null;
 
   do {
     const params = new URLSearchParams({
-      MarketplaceIds: MARKETPLACE_ID,
+      MarketplaceIds: marketplaceId,
       CreatedAfter: createdAfter,
       CreatedBefore: createdBefore,
       OrderStatuses: "Shipped",
@@ -205,6 +215,7 @@ export async function fetchCatalogItems(
   asins: string[]
 ): Promise<CatalogItem[]> {
   const token = await getAccessToken();
+  const marketplaceId = await getMarketplaceId();
   const results: CatalogItem[] = [];
 
   // API accepts up to 20 ASINs at a time
@@ -213,7 +224,7 @@ export async function fetchCatalogItems(
     const params = new URLSearchParams({
       identifiers: batch.join(","),
       identifiersType: "ASIN",
-      marketplaceIds: MARKETPLACE_ID,
+      marketplaceIds: marketplaceId,
       includedData: "summaries,images,relationships",
     });
 

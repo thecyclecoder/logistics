@@ -260,7 +260,7 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
               return (
                 <button
                   key={cat}
-                  onClick={(e) => { e.stopPropagation(); isCurrent ? setEditingId(null) : handleRecategorize(product, cat); }}
+                  onClick={(e) => { e.stopPropagation(); if (isCurrent) { setEditingId(null); } else { handleRecategorize(product, cat); } }}
                   disabled={saving}
                   className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${isCurrent ? "font-medium text-gray-900 bg-gray-50" : "text-gray-600"}`}
                 >

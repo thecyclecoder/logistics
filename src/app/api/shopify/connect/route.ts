@@ -14,7 +14,7 @@ export async function GET() {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL!;
-  const scopes = "read_orders,read_products,read_inventory";
+  const scopes = "read_orders,read_products,read_inventory,read_shopify_payments_payouts";
   const nonce = crypto.randomUUID();
 
   const params = new URLSearchParams({

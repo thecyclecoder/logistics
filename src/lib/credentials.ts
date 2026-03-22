@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 
-type IntegrationId = "amazon" | "quickbooks" | "shopify" | "amplifier";
+type IntegrationId = "amazon" | "quickbooks" | "shopify" | "amplifier" | "paypal" | "braintree";
 
 const cache = new Map<string, { data: Record<string, string>; expiresAt: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes

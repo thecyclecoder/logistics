@@ -63,6 +63,18 @@ export default async function ConnectionsPage() {
       description: "Storefront and order management",
       connected: !!credsMap.get("shopify")?.client_id && shopifyHasTokens,
     },
+    {
+      name: "PayPal",
+      slug: "paypal",
+      description: "Payment processing — transactions, fees, refunds",
+      connected: !!(credsMap.get("paypal")?.client_id && credsMap.get("paypal")?.client_secret),
+    },
+    {
+      name: "Braintree",
+      slug: "braintree",
+      description: "Payment processing — fees, refunds, chargebacks",
+      connected: !!(credsMap.get("braintree")?.merchant_id && credsMap.get("braintree")?.public_key),
+    },
   ];
 
   return (

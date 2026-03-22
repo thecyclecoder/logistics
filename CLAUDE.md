@@ -199,6 +199,121 @@ All tables have RLS enabled. Migrations in `supabase/migrations/` (028 migration
 - `POST /api/push/subscribe` — register push subscription
 - `GET /api/push/check` — check subscription status (per-device with `per_device=true`)
 
+## FBA Replenishment Workflow (TO BUILD)
+
+End-to-end automated replenishment from Amplifier (3PL) to Amazon FBA. Currently a manual multi-platform process.
+
+### The Replenishment Chain
+```
+Low FBA stock detected for ASIN (e.g., B0XXXX - ST Mixed Berry 2-pack)
+  → Check if Amplifier has assembled kits ready (e.g., ST-MB-2PK)
+    → If not, create kitting order at Amplifier:
+        - Take 100× single units (ST-MB-1)
+        - Assemble into 50× 2-packs
+        - Apply Transparency sticker to each unit
+    → Once kits are ready, ship to Amazon FBA:
+        - Create inbound plan via Amazon SP-API
+        - Amazon assigns fulfillment center (e.g., PHX5)
+        - Create outbound order at Amplifier → ship to PHX5
+        - Poll for tracking → push to Amazon
+        - Monitor receiving at Amazon FC
+```
+
+### Key Mappings Needed (New Tables)
+- **ASIN → Amplifier Kit SKU**: Which kit at Amplifier fulfills this ASIN (e.g., B0XXXX → ST-MB-2PK)
+- **Kit SKU → Components**: What goes into the kit (e.g., ST-MB-2PK = 2× ST-MB-1 + 1× Transparency sticker)
+- **ASIN → Transparency enrollment**: Does this ASIN need Transparency codes? If yes, generate via Amazon Transparency API before kitting
+- **Unit multiplier**: A 2-pack ASIN means 2 units per kit, so shipping 50 kits = 100 units on the listing
+
+### Amazon SP-API: Fulfillment Inbound v2024-03-20
+Use the NEW v2024 API (v0 was deprecated Dec 2024). The workflow is sequential and asynchronous (operations return `operationId` to poll for status).
+
+**Phase 1 — Plan & Pack:**
+1. `POST /inbound/fba/2024-03-20/inboundPlans` — create plan with source address, items (MSKU, qty)
+2. `POST .../packingOptions/generate` → `PUT .../packingOptions/confirm` — packing arrangement
+3. `PUT .../shipments/{id}/packingInformation` — box dimensions, weight, contents
+
+**Phase 2 — Placement:**
+4. `POST .../placementOptions/generate` — get FC destination options + fees
+5. `PUT .../placementOptions/confirm` — confirms FC assignment, creates shipment confirmation IDs
+
+**Phase 3 — Transportation:**
+6. `POST .../transportationOptions/generate` — get carrier quotes
+7. `GET .../transportationOptions` — review options
+8. `POST .../deliveryWindowOptions/generate` + `PUT .../confirm` — for LTL/FTL only
+9. `PUT .../transportationOptions/confirm` — finalize carrier
+
+**Phase 4 — Ship & Track:**
+10. `GET .../labels` — generate FBA box ID labels (required on every box)
+11. `PUT .../trackingDetails` — push tracking number after 3PL ships (carrier, PRO/BOL number)
+12. Poll shipment status for receiving confirmation
+
+### Amplifier API Integration
+- **Create kitting order**: `POST /orders` with kit assembly instructions + destination = Amplifier warehouse (internal)
+- **Create outbound order**: `POST /orders` with kit SKU + destination = Amazon FC address from step 5
+- **Poll for tracking**: `GET /reports/shipments/{date}` via daily cron — match against pending inbound plans
+- **Inventory check**: `GET /reports/inventory/current` — check if assembled kits are in stock before creating FBA shipment
+- **No webhooks available** — must poll for shipment status updates
+
+### Amazon Transparency API
+- Look up which ASINs are enrolled in Transparency program
+- Generate Transparency codes programmatically
+- Provide codes to Amplifier for sticker application during kitting
+- Each unit needs a unique code — generate batch of codes before kitting order
+
+### Proposed UI: `/dashboard/replenishment`
+1. **Replenishment Queue** — ASINs needing stock (from existing FBA replenishment alerts), showing:
+   - Current FBA stock, burn rate, days of stock remaining
+   - Kit SKU at Amplifier and current kit inventory
+   - Whether kitting is needed first
+   - Suggested ship quantity
+
+2. **Kit Mapping Config** — map each ASIN to its Amplifier Kit SKU:
+   - ASIN → Kit SKU → Component SKUs + quantities
+   - Transparency enrollment flag
+   - Unit multiplier (how many units per kit)
+
+3. **One-Click Actions**:
+   - "Build Kits" → creates kitting order at Amplifier (with Transparency codes if needed)
+   - "Ship to FBA" → creates Amazon inbound plan + Amplifier outbound order
+   - Status tracker showing pipeline: Kitting → Ready → Shipped → In Transit → Received
+
+4. **Shipment History** — past replenishments with status, quantities, tracking
+
+### Proposed API Routes
+- `GET /api/replenishment/queue` — ASINs needing replenishment with kit status
+- `POST /api/replenishment/create-kit-order` — trigger kitting at Amplifier
+- `POST /api/replenishment/create-inbound` — create Amazon inbound plan
+- `POST /api/replenishment/ship` — create Amplifier outbound order to Amazon FC
+- `PUT /api/replenishment/update-tracking` — push tracking to Amazon
+- `GET /api/replenishment/status` — check inbound shipment status
+- `GET /api/cron/replenishment-tracking` — poll Amplifier for tracking updates
+
+### Future: AI Case Management
+- Monitor receiving discrepancies (shipped 500, received 480)
+- Auto-draft Seller Support cases with shipment details, tracking, BOL
+- Use Claude API to generate case responses based on discrepancy type
+- Auto-respond to Amazon follow-up questions
+- Amazon SP-API has Messaging API and Case Management endpoints
+
+### Key Constraints
+- Max 1500 SKUs per inbound plan
+- SPD parcels: <15kg each
+- All units need FNSKU label (not UPC) — generated via `getLabels` API
+- Every shipping box needs unique FBA box ID label
+- Multiple expiration dates require separate inbound plans
+- Cancellation window: 24h for SPD, 1h for LTL/FTL
+- All async operations need polling via `getInboundOperationStatus`
+
+## Amazon Margin Analysis
+Page at `/dashboard/amazon` showing per-product profitability after Amazon fees.
+
+Data from Amazon SP-API Finances API (`/finances/v0/financialEventGroups`):
+- Per-item: Principal (revenue), Tax, FBAPerUnitFulfillmentFee, Commission (referral), Promotions
+- Aggregated by product (mapped via seller_sku → ASIN → product_id)
+- Two margin calculations: pre-COGS (after Amazon fees) and post-COGS (true profit)
+- Products with missing BOM costs flagged as incomplete
+
 ## Pre-Push Checklist (MANDATORY)
 Every change must go through this sequence before considering it done:
 1. **TypeScript check**: `npx tsc --noEmit` — fix all type errors

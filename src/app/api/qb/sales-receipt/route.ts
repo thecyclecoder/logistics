@@ -20,6 +20,7 @@ const CHANNEL_CONFIG = {
 } as const;
 
 export async function POST(request: NextRequest) {
+  try {
   const body = await request.json();
   const { channel, month } = body as { channel: "amazon" | "shopify"; month: string };
 
@@ -135,13 +136,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No line items to create" }, { status: 400 });
   }
 
-  // Get QB access token
+  // Get QB access token (direct REST to avoid caching)
   const qbCreds = await getCredentials("quickbooks");
-  const { data: qbTokens } = await supabase
-    .from("qb_tokens")
-    .select("refresh_token, realm_id")
-    .eq("id", "current")
-    .single();
+  const qbTokensRes = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/qb_tokens?id=eq.current&select=refresh_token,realm_id`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+      cache: "no-store",
+    }
+  );
+  const qbTokensArr = await qbTokensRes.json();
+  const qbTokens = qbTokensArr?.[0];
 
   if (!qbTokens) {
     return NextResponse.json({ error: "QuickBooks not connected" }, { status: 400 });
@@ -161,10 +169,18 @@ export async function POST(request: NextRequest) {
   const tokenData = await tokenRes.json();
 
   // Store rotated token
-  await supabase.from("qb_tokens").update({
-    refresh_token: tokenData.refresh_token,
-    updated_at: new Date().toISOString(),
-  }).eq("id", "current");
+  await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/qb_tokens?id=eq.current`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh_token: tokenData.refresh_token, updated_at: new Date().toISOString() }),
+    }
+  );
 
   const config = CHANNEL_CONFIG[channel];
 
@@ -208,4 +224,8 @@ export async function POST(request: NextRequest) {
     channel,
     month,
   });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: "Unhandled error: " + message }, { status: 500 });
+  }
 }

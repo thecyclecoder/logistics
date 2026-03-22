@@ -148,7 +148,7 @@ export async function GET() {
     }
     const manualList = manualByProduct.get(productId) || [];
     const manual = manualList.reduce((s, m) => s + m.quantity, 0);
-    return { fba, fba_transit: fbaTransit, tpl, manual, total: fba + tpl + manual };
+    return { fba, fba_transit: fbaTransit, tpl, manual, total: fba + fbaTransit + tpl + manual };
   }
 
   function getSalesBurn(productId: string) {

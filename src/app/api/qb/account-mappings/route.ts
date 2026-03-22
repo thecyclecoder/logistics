@@ -146,7 +146,7 @@ const MAPPING_DEFINITIONS: Record<string, {
     label: "Shopify Other Adjustments",
     description: "Account for Shopify miscellaneous adjustments",
     entityType: "account",
-    accountFilter: "Income",
+    accountFilter: "Expense",
     group: "Journal Entry",
   },
 };

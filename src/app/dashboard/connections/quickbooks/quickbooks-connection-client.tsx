@@ -12,6 +12,7 @@ import {
   Unplug,
   Settings2,
 } from "lucide-react";
+import SearchableSelect from "@/components/searchable-select";
 
 interface QBOption {
   id: string;
@@ -281,27 +282,13 @@ export default function QuickBooksConnectionClient({
                                 <p className="text-xs text-gray-400 mt-0.5">{def.description}</p>
                               </td>
                               <td className="px-4 py-3">
-                                <select
+                                <SearchableSelect
+                                  options={options}
                                   value={current?.qb_id || ""}
-                                  onChange={(e) => {
-                                    if (e.target.value) handleSaveMapping(key, e.target.value);
-                                  }}
+                                  onChange={(id) => handleSaveMapping(key, id)}
+                                  placeholder={def.entityType === "customer" ? "— Select customer —" : "— Select account —"}
                                   disabled={savingMapping === key}
-                                  className={`w-full rounded-lg border px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                                    current
-                                      ? "border-green-300 bg-green-50 text-green-800"
-                                      : "border-amber-300 bg-amber-50 text-amber-800"
-                                  }`}
-                                >
-                                  <option value="">
-                                    {def.entityType === "customer" ? "— Select customer —" : "— Select account —"}
-                                  </option>
-                                  {options.map((o) => (
-                                    <option key={o.id} value={o.id}>
-                                      {o.name}{o.type ? ` (${o.type})` : ""}
-                                    </option>
-                                  ))}
-                                </select>
+                                />
                               </td>
                               <td className="px-4 py-3">
                                 {current ? (

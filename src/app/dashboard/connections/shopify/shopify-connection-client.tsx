@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle2,
   XCircle,
   Plug,
   ShoppingBag,
   RefreshCw,
+  CreditCard,
 } from "lucide-react";
 import ShopifyReviewClient from "@/components/shopify-review-client";
+
+interface GatewayMapping {
+  gateway_name: string;
+  processor: string;
+}
+
+interface ProcessorOption {
+  value: string;
+  label: string;
+}
 
 export default function ShopifyConnectionClient({
   initialConnected,
@@ -25,6 +36,58 @@ export default function ShopifyConnectionClient({
     message: string;
     type: "success" | "error";
   } | null>(null);
+  const [gatewayMappings, setGatewayMappings] = useState<GatewayMapping[]>([]);
+  const [processorOptions, setProcessorOptions] = useState<ProcessorOption[]>([]);
+  const [savingGateway, setSavingGateway] = useState<string | null>(null);
+  const [newGateway, setNewGateway] = useState("");
+
+  useEffect(() => {
+    if (initialConnected) {
+      fetch("/api/gateway-mappings")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.mappings) setGatewayMappings(data.mappings);
+          if (data.processor_options) setProcessorOptions(data.processor_options);
+        })
+        .catch(() => {});
+    }
+  }, [initialConnected]);
+
+  const handleGatewayChange = async (gatewayName: string, processor: string) => {
+    setSavingGateway(gatewayName);
+    try {
+      const res = await fetch("/api/gateway-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gateway_name: gatewayName, processor }),
+      });
+      if (res.ok) {
+        setGatewayMappings((prev) =>
+          prev.map((m) => m.gateway_name === gatewayName ? { ...m, processor } : m)
+        );
+      }
+    } catch {} finally {
+      setSavingGateway(null);
+    }
+  };
+
+  const handleAddGateway = async (processor: string) => {
+    if (!newGateway.trim()) return;
+    setSavingGateway(newGateway);
+    try {
+      const res = await fetch("/api/gateway-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gateway_name: newGateway.trim(), processor }),
+      });
+      if (res.ok) {
+        setGatewayMappings((prev) => [...prev, { gateway_name: newGateway.trim(), processor }]);
+        setNewGateway("");
+      }
+    } catch {} finally {
+      setSavingGateway(null);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -144,6 +207,74 @@ export default function ShopifyConnectionClient({
           </div>
         )}
       </div>
+
+      {/* Payment Gateway Mapping */}
+      {initialConnected && gatewayMappings.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <CreditCard className="h-5 w-5 text-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Payment Gateway Mapping</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            Map Shopify payment gateway names to processor categories for journal entries.
+          </p>
+
+          <div className="rounded-xl border border-gray-200">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-200">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Gateway Name</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Processor Category</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {gatewayMappings.map((m) => (
+                  <tr key={m.gateway_name} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-gray-900">{m.gateway_name}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={m.processor}
+                        onChange={(e) => handleGatewayChange(m.gateway_name, e.target.value)}
+                        disabled={savingGateway === m.gateway_name}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      >
+                        {processorOptions.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-gray-50">
+                  <td className="px-4 py-3">
+                    <input
+                      type="text"
+                      value={newGateway}
+                      onChange={(e) => setNewGateway(e.target.value)}
+                      placeholder="Add gateway name..."
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-mono placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      disabled={!newGateway.trim() || !!savingGateway}
+                      onChange={(e) => { if (e.target.value) handleAddGateway(e.target.value); e.target.value = ""; }}
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    >
+                      <option value="">— Add —</option>
+                      {processorOptions.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {initialConnected && <ShopifyReviewClient key={syncVersion} />}
     </div>

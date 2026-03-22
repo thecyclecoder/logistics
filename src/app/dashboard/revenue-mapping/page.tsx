@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { RefreshCw, Search, CheckCircle2, AlertCircle } from "lucide-react";
+import SearchableSelect from "@/components/searchable-select";
 
 interface Account {
   id: string;
@@ -165,29 +166,19 @@ export default function RevenueMappingPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <select
+                  <SearchableSelect
+                    options={accounts.map((a) => ({ id: a.id, name: a.name }))}
                     value={product.revenue_account_id || ""}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleAssign(product.id, e.target.value);
+                    onChange={(id) => {
+                      if (id) {
+                        handleAssign(product.id, id);
                       } else {
                         handleClear(product.id);
                       }
                     }}
+                    placeholder="— Select revenue account —"
                     disabled={saving === product.id}
-                    className={`w-full rounded-lg border px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                      product.revenue_account_id
-                        ? "border-green-300 bg-green-50 text-green-800"
-                        : "border-amber-300 bg-amber-50 text-amber-800"
-                    }`}
-                  >
-                    <option value="">— Select revenue account —</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td className="px-4 py-3">
                   {product.revenue_account_id ? (

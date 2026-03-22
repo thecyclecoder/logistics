@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const supabase = createServiceClient();
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
 
     // Get inventory audit data
-    const auditRes = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app"}/api/inventory-audit`, {
+    const auditRes = await fetch(`${baseUrl}/api/inventory-audit`, {
       cache: "no-store",
     }).catch(() => null);
 
-    // Fallback: compute directly if self-fetch fails (common in serverless)
-    let products: Array<{ name: string; image_url: string | null; current: number; product_id: string }> = [];
+    const products: Array<{ name: string; image_url: string | null; current: number; product_id: string }> = [];
 
     if (auditRes?.ok) {
       const audit = await auditRes.json();
@@ -31,7 +29,7 @@ export async function GET() {
     const today = now.toISOString().split("T")[0];
 
     const salesRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app"}/api/sales-data?start=${fourteenDaysAgo}&end=${today}&channel=all`,
+      `${baseUrl}/api/sales-data?start=${fourteenDaysAgo}&end=${today}&channel=all`,
       { cache: "no-store" }
     ).catch(() => null);
 

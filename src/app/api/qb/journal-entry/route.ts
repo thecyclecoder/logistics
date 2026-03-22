@@ -35,9 +35,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { month, overrides } = body as {
+    const { month, overrides, debug } = body as {
       month: string;
       overrides?: { braintree_fees?: number };
+      debug?: boolean;
     };
     if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });
 
@@ -56,8 +57,10 @@ export async function POST(request: NextRequest) {
 
     // Build QB Journal Entry payload
     const [yr, mo] = month.split("-");
-    const lastDay = new Date(Number(yr), Number(mo), 0);
-    const txnDate = lastDay.toISOString().split("T")[0];
+    // In debug mode, use today's date so QB applies it immediately
+    const txnDate = debug
+      ? new Date().toISOString().split("T")[0]
+      : new Date(Number(yr), Number(mo), 0).toISOString().split("T")[0];
     const docNumber = `SHOPIFY-${mo}${yr.substring(2)}`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,11 +168,20 @@ export async function POST(request: NextRequest) {
 async function buildJournalEntryData(month: string, overrides?: { braintree_fees?: number }) {
   const supabase = createServiceClient();
 
+  // 0. Data completeness checks
+  const warnings: string[] = [];
+
   // 1. Get processor summaries
   const { data: processorData } = await supabase
     .from("payment_processor_summaries")
     .select("*")
     .eq("closing_month", month);
+
+  // Check all processors have data
+  const processorNames = (processorData || []).map((p) => p.processor);
+  if (!processorNames.includes("shopify_payments")) warnings.push("Missing Shopify Payments data — run processor sync first");
+  if (!processorNames.includes("paypal")) warnings.push("Missing PayPal data — run processor sync first");
+  if (!processorNames.includes("braintree")) warnings.push("Missing Braintree data — run processor sync first");
 
   const processors: Record<string, { gross: number; fees: number; refunds: number; chargebacks: number; adjustments: number }> = {};
   for (const p of processorData || []) {
@@ -252,6 +264,17 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     const lh: string = res.headers.get("link") || "";
     const nm: RegExpMatchArray | null = lh.match(/<([^>]+)>;\s*rel="next"/);
     orderUrl = nm ? nm[1] : null;
+  }
+
+  // Data completeness checks on orders
+  if (allOrders.length === 0) warnings.push("No Shopify orders found for this month");
+
+  // Basic order count sanity check
+  const [checkYear, checkMon] = month.split("-").map(Number);
+  const checkLastDay = new Date(checkYear, checkMon, 0).getDate();
+  const expectedMinOrders = checkLastDay * 2; // expect at least 2 orders/day
+  if (allOrders.length > 0 && allOrders.length < expectedMinOrders) {
+    warnings.push(`Only ${allOrders.length} orders for ${checkLastDay} days — verify data completeness`);
   }
 
   // Aggregate revenue by revenue account AND gross by processor (from order gateway)
@@ -498,9 +521,30 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     }
   }
 
+  // Add warnings for data issues
+  if (unmappedRevenue > 0) {
+    warnings.push(`$${unmappedRevenue.toFixed(2)} in revenue from unmapped Shopify products — map them in Revenue Mapping`);
+  }
+
+  // Check revenue accounts are mapped
+  const productsWithoutRevAcct = (products || []).filter((p) => {
+    const mapped = mappingLookup.has(`${p.id}`); // at least appears in mappings
+    return !p.revenue_account_id && mapped;
+  });
+  if (productsWithoutRevAcct.length > 0) {
+    warnings.push(`${productsWithoutRevAcct.length} products missing revenue account mapping`);
+  }
+
+  // Check QB account mappings exist
+  const requiredMappings = ["shipping_income", "sales_tax_payable", "discounts_account", "refunds_account", "chargebacks_account"];
+  for (const key of requiredMappings) {
+    if (!qbMappings[key]?.qb_id) warnings.push(`Missing QB account mapping: ${key}`);
+  }
+
   return {
     month,
     lines,
+    warnings,
     summary: {
       revenue_accounts: Array.from(revenueByAccount.values()),
       unmapped_revenue: unmappedRevenue,

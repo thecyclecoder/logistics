@@ -356,12 +356,63 @@ export async function POST(request: NextRequest) {
       steps.push({ step: 6, name: "Variance Check", status: "error", message: err instanceof Error ? err.message : String(err) });
     }
 
+    // ============ STEP 7: Shopify Journal Entry ============
+    try {
+      // Sync processor data first
+      await fetch(`${request.nextUrl.origin}/api/qb/sync-processors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+
+      const jeRes = await fetch(`${request.nextUrl.origin}/api/qb/journal-entry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, debug }),
+      });
+      const jeData = await jeRes.json();
+
+      if (jeRes.ok && jeData.success) {
+        await supabase.from("month_end_closings").update({
+          shopify_journal_entry_id: jeData.journal_entry_id,
+          shopify_journal_entry_doc: jeData.doc_number,
+        }).eq("id", closingId);
+        steps.push({
+          step: 7,
+          name: "Shopify Journal Entry",
+          status: "success",
+          message: `JE #${jeData.doc_number} — ${jeData.line_count} lines, ${jeData.updated ? "updated" : "created"}`,
+        });
+      } else {
+        throw new Error(jeData.error || "Failed to create journal entry");
+      }
+    } catch (err) {
+      steps.push({ step: 7, name: "Shopify Journal Entry", status: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+
     // Mark complete
     const allSuccess = steps.every((s) => s.status === "success" || s.status === "skipped");
     await supabase.from("month_end_closings").update({
       status: allSuccess ? "completed" : "completed_with_errors",
       completed_at: new Date().toISOString(),
     }).eq("id", closingId);
+
+    // Send push notification
+    try {
+      const monthName = new Date(year, mon - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+      const statusMsg = allSuccess ? "completed successfully" : "completed with some issues";
+      await fetch(`${request.nextUrl.origin}/api/push/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.PUSH_SECRET}` },
+        body: JSON.stringify({
+          title: "Month-End Closing " + (allSuccess ? "Complete" : "Done"),
+          body: `${monthName} closing ${statusMsg}. ${steps.filter(s => s.status === "success").length}/${steps.length} steps passed.`,
+          type: "month_end",
+        }),
+      });
+    } catch {
+      // Don't fail the close if notification fails
+    }
 
     return NextResponse.json({ steps, closing_id: closingId });
   } catch (err) {

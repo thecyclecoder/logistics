@@ -25,6 +25,7 @@ const STEPS = [
   "Shopify Sales Receipt",
   "QB Inventory Snapshot (Post-Closing)",
   "Variance Check",
+  "Shopify Journal Entry",
 ];
 
 export default function MonthEndPage() {
@@ -67,7 +68,7 @@ export default function MonthEndPage() {
 
     // Show steps being processed
     const interval = setInterval(() => {
-      setCurrentStep((prev) => Math.min(prev + 1, 6));
+      setCurrentStep((prev) => Math.min(prev + 1, 7));
     }, 8000);
 
     try {
@@ -83,7 +84,7 @@ export default function MonthEndPage() {
 
       if (data.steps) {
         setSteps(data.steps);
-        setCurrentStep(7);
+        setCurrentStep(8);
       }
       if (data.error && !data.steps) {
         setError(data.error);
@@ -101,7 +102,7 @@ export default function MonthEndPage() {
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Month-End Closing</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Run the full closing sequence: snapshot → adjustment → sales receipts → verify.
+          Run the full closing sequence: snapshot → adjustment → sales receipts → verify → journal entry.
         </p>
       </div>
 

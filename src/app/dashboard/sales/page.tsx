@@ -190,7 +190,7 @@ export default function SalesPage() {
           <div className="rounded-xl border border-gray-200 bg-white">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="px-3 py-3 text-left font-medium text-gray-500 w-10"></th>
                     <th className="px-3 py-3 text-left font-medium text-gray-500">Product</th>

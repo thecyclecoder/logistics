@@ -46,15 +46,15 @@ export async function POST(request: NextRequest) {
       .gte("sale_date", startDate)
       .lte("sale_date", endDate);
 
-    // Get mappings to resolve ASINs to products
-    const { data: mappings } = await supabase
+    // Get mappings to resolve ASINs to products (filter active in JS)
+    const { data: allMappings } = await supabase
       .from("sku_mappings")
-      .select("external_id, product_id, unit_multiplier")
-      .eq("source", "amazon")
-      .eq("active", true);
+      .select("external_id, product_id, unit_multiplier, active")
+      .eq("source", "amazon");
 
     const mappingLookup = new Map<string, { product_id: string; multiplier: number }>();
-    for (const m of mappings || []) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const m of (allMappings || []).filter((m: any) => m.active)) {
       mappingLookup.set(m.external_id, { product_id: m.product_id, multiplier: m.unit_multiplier || 1 });
     }
 
@@ -75,14 +75,14 @@ export async function POST(request: NextRequest) {
       .gte("sale_date", startDate)
       .lte("sale_date", endDate);
 
-    const { data: mappings } = await supabase
+    const { data: allMappings2 } = await supabase
       .from("sku_mappings")
-      .select("external_id, product_id, unit_multiplier")
-      .eq("source", "shopify")
-      .eq("active", true);
+      .select("external_id, product_id, unit_multiplier, active")
+      .eq("source", "shopify");
 
     const mappingLookup = new Map<string, { product_id: string; multiplier: number }>();
-    for (const m of mappings || []) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const m of (allMappings2 || []).filter((m: any) => m.active)) {
       mappingLookup.set(m.external_id, { product_id: m.product_id, multiplier: m.unit_multiplier || 1 });
     }
 

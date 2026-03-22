@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { RefreshCw, Plus, X, Search, MapPin, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
 interface BomItem {
@@ -142,9 +142,9 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {data.finished_goods_with_bom.map((fg) => (
-                    <>{/* eslint-disable-next-line react/jsx-key */}
+                    <React.Fragment key={fg.product_id}>
                       {/* Parent row */}
-                      <tr key={fg.product_id} className="border-b border-gray-200 bg-brand-50/50">
+                      <tr className="border-b border-gray-200 bg-brand-50/50">
                         <td className="px-3 py-2.5">
                           {fg.image_url ? <img src={fg.image_url} alt="" className="h-8 w-8 rounded-md object-contain bg-white border border-gray-100" /> : <div className="h-8 w-8 rounded-md bg-brand-100" />}
                         </td>
@@ -202,7 +202,7 @@ export default function InventoryPage() {
                           <td className="px-3 py-1.5"><VarianceIcon v={comp.variance} /></td>
                         </tr>
                       ))}
-                    </>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

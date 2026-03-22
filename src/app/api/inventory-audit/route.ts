@@ -276,6 +276,8 @@ export async function GET() {
       sales_since: monthStart,
       fba_snapshot_date: latestFbaDate?.snapshot_date || null,
       tpl_snapshot_date: latestTplDate?.snapshot_date || null,
+      manual_entries_count: manualEntries?.length || 0,
+      manual_product_ids: Array.from(manualByProduct.keys()),
     },
   });
 }

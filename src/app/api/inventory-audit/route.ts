@@ -174,15 +174,29 @@ export async function GET() {
   const finishedGoodsWithBOM = bundles.map((bundle) => {
     const inv = getChannelInventory(bundle.id);
     const burn = getSalesBurn(bundle.id);
-    const qbStart = qbInventory.get(bundle.id) || 0;
-    const expected = qbStart - burn.total_sold;
     const components = bomComponents.get(bundle.id) || [];
+
+    // QB Start comes FROM components UP to parent
+    // Parent QB Start = min(component_qty / bom_multiplier) across all components
+    // This gives us how many finished goods the components could make
+    let qbStart = 0;
+    if (components.length > 0) {
+      const componentStarts = components.map((comp) => {
+        const bomQty = comp.bundle_quantity || 1;
+        const compQb = qbInventory.get(comp.id) || 0;
+        return Math.floor(compQb / bomQty);
+      });
+      qbStart = Math.min(...componentStarts);
+    }
+
+    const expected = qbStart - burn.total_sold;
 
     const bomItems = components.map((comp) => {
       const bomQty = comp.bundle_quantity || 1;
 
-      // Reconciliation pushed through BOM: parent values × BOM quantity
-      const compQbStart = qbStart * bomQty;
+      // QB Start: actual QB value for this component (not derived from parent)
+      const compQbStart = qbInventory.get(comp.id) || 0;
+      // Sales burn: parent sales × BOM qty (sales consume components)
       const compAmzSold = burn.amazon_sold * bomQty;
       const compShopSold = burn.shopify_sold * bomQty;
       const compTotalSold = burn.total_sold * bomQty;

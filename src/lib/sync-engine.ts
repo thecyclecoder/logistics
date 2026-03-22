@@ -232,6 +232,9 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
     const supabase = createServiceClient();
     let count = 0;
 
+    // Accumulate FBA inventory per ASIN (multiple seller SKUs can share one ASIN)
+    const fbaAccum = new Map<string, { asin: string; fulfillable: number; inbound: number; reserved: number; transit: number }>();
+
     // Fetch catalog data for all ASINs (titles, images, prices, parent/child)
     const allAsins = Array.from(new Set(summaries.map((s) => s.asin)));
     const catalogItems = await amazon.fetchCatalogItems(allAsins);
@@ -259,28 +262,23 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
         seller_sku: s.sellerSku,
       });
 
-      // Write daily FBA inventory snapshot with transit
+      // Accumulate FBA data per ASIN (multiple seller SKUs can share one ASIN)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const details = (s.inventoryDetails || {}) as any;
-      const transitQty =
-        (details.inboundWorkingQuantity || 0) +
-        (details.inboundShippedQuantity || 0) +
-        (details.inboundReceivingQuantity || 0) +
-        (details.reservedQuantity?.totalReservedQuantity || 0);
+      const fulfillable = details.fulfillableQuantity || 0;
+      const inbound = (details.inboundShippedQuantity || 0) + (details.inboundReceivingQuantity || 0);
+      const reserved = details.reservedQuantity?.totalReservedQuantity || 0;
+      const transitQty = (details.inboundWorkingQuantity || 0) + inbound + reserved;
 
-      await supabase.from("amazon_inventory_snapshots").upsert(
-        {
-          asin: s.asin,
-          seller_sku: s.sellerSku,
-          fn_sku: s.fnSku,
-          quantity_fulfillable: s.totalFulfillableQuantity,
-          quantity_inbound: (details.inboundShippedQuantity || 0) + (details.inboundReceivingQuantity || 0),
-          quantity_reserved: details.reservedQuantity?.totalReservedQuantity || 0,
-          quantity_transit: transitQty,
-          snapshot_date: new Date().toISOString().split("T")[0],
-        },
-        { onConflict: "asin,snapshot_date" }
-      );
+      const asinKey = `${s.asin}::${new Date().toISOString().split("T")[0]}`;
+      if (!fbaAccum.has(asinKey)) {
+        fbaAccum.set(asinKey, { asin: s.asin, fulfillable: 0, inbound: 0, reserved: 0, transit: 0 });
+      }
+      const acc = fbaAccum.get(asinKey)!;
+      acc.fulfillable += fulfillable;
+      acc.inbound += inbound;
+      acc.reserved += reserved;
+      acc.transit += transitQty;
 
       // Try to resolve by ASIN first, then sellerSku
       const productId =
@@ -303,6 +301,21 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
       });
 
       count++;
+    }
+
+    // Write accumulated FBA snapshots (summed across seller SKUs per ASIN)
+    // Delete today's existing rows first, then insert fresh (upsert has issues)
+    const snapshotDate = new Date().toISOString().split("T")[0];
+    await supabase.from("amazon_inventory_snapshots").delete().eq("snapshot_date", snapshotDate);
+    for (const acc of Array.from(fbaAccum.values())) {
+      await supabase.from("amazon_inventory_snapshots").insert({
+        asin: acc.asin,
+        quantity_fulfillable: acc.fulfillable,
+        quantity_inbound: acc.inbound,
+        quantity_reserved: acc.reserved,
+        quantity_transit: acc.transit,
+        snapshot_date: snapshotDate,
+      });
     }
 
     await finishLog(logId, "success", count);

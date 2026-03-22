@@ -32,9 +32,16 @@ interface ExternalSku {
   mapped_to: string | null;
 }
 
+interface BomRow {
+  parent_id: string;
+  component_id: string;
+  quantity: number;
+}
+
 interface ProductsClientProps {
   initialProducts: Product[];
   initialMappings: SkuMapping[];
+  bomRows: BomRow[];
 }
 
 function classifyProduct(
@@ -62,7 +69,7 @@ const CATEGORY_STYLES: Record<ProductCategory, string> = {
   finished_good_no_bom: "bg-emerald-50 text-emerald-700",
 };
 
-export default function ProductsClient({ initialProducts, initialMappings }: ProductsClientProps) {
+export default function ProductsClient({ initialProducts, initialMappings, bomRows }: ProductsClientProps) {
   const [products, setProducts] = useState(initialProducts);
   const [mappings, setMappings] = useState(initialMappings);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -104,23 +111,27 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
 
   const componentIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const p of products) {
-      if (p.bundle_id) ids.add(p.id);
+    for (const row of bomRows) {
+      ids.add(row.component_id);
     }
     return ids;
-  }, [products]);
+  }, [bomRows]);
 
+  // Build component map from product_bom (supports multi-parent)
   const componentMap = useMemo(() => {
-    const map = new Map<string, Product[]>();
-    for (const p of products) {
-      if (p.bundle_id) {
-        const list = map.get(p.bundle_id) || [];
-        list.push(p);
-        map.set(p.bundle_id, list);
-      }
+    const prodById = new Map<string, Product>();
+    for (const p of products) prodById.set(p.id, p);
+
+    const map = new Map<string, Array<Product & { bom_quantity: number }>>();
+    for (const row of bomRows) {
+      const comp = prodById.get(row.component_id);
+      if (!comp) continue;
+      const list = map.get(row.parent_id) || [];
+      list.push({ ...comp, bom_quantity: Number(row.quantity) });
+      map.set(row.parent_id, list);
     }
     return map;
-  }, [products]);
+  }, [products, bomRows]);
 
   const mappingsByProduct = useMemo(() => {
     const map = new Map<string, SkuMapping[]>();
@@ -456,7 +467,7 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
                                 <div className="h-1.5 w-1.5 rounded-full bg-gray-300 flex-shrink-0" />
                                 <p className="text-sm text-gray-700 truncate flex-1">{comp.quickbooks_name}</p>
                                 <span className="text-xs text-gray-400 font-mono">{comp.sku || "—"}</span>
-                                <span className="text-xs text-gray-500">&times;{comp.bundle_quantity || 1}</span>
+                                <span className="text-xs text-gray-500">&times;{comp.bom_quantity || 1}</span>
                                 <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">Component</span>
                               </div>
                             ))}
@@ -508,9 +519,10 @@ export default function ProductsClient({ initialProducts, initialMappings }: Pro
               </h2>
               <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
                 {rawMaterials.map((p) => {
-                  const usedIn = finishedGoods.filter((fg) =>
-                    (componentMap.get(fg.id) || []).some((c) => c.id === p.id)
-                  );
+                  const usedIn = finishedGoods.filter((fg) => {
+                    const comps = componentMap.get(fg.id) || [];
+                    return comps.some((c) => c.id === p.id);
+                  });
                   return (
                     <div key={p.id} className="px-5 py-3">
                       <div className="flex items-center gap-3">

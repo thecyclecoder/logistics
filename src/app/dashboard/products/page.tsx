@@ -7,7 +7,7 @@ export const revalidate = 0;
 export default async function ProductsPage() {
   const supabase = createServiceClient();
 
-  const [productsRes, mappingsRes] = await Promise.all([
+  const [productsRes, mappingsRes, bomRes] = await Promise.all([
     supabase
       .from("products")
       .select("*")
@@ -18,10 +18,14 @@ export default async function ProductsPage() {
       .select("*, products(quickbooks_name, sku)")
       .eq("active", true)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("product_bom")
+      .select("parent_id, component_id, quantity"),
   ]);
 
   const products = (productsRes.data || []) as Product[];
   const mappings = (mappingsRes.data || []) as SkuMapping[];
+  const bomRows = (bomRes.data || []) as Array<{ parent_id: string; component_id: string; quantity: number }>;
 
-  return <ProductsClient initialProducts={products} initialMappings={mappings} />;
+  return <ProductsClient initialProducts={products} initialMappings={mappings} bomRows={bomRows} />;
 }

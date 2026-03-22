@@ -10,11 +10,6 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const SHRINKAGE_ACCOUNT_NAME = "Shrinkage";
 
-const CHANNEL_CONFIG = {
-  amazon: { customerRef: "40", depositAccount: "117", memo: "Amazon COGS - " },
-  shopify: { customerRef: "30410", depositAccount: "589", memo: "Shopify COGS - " },
-} as const;
-
 interface StepResult {
   step: number;
   name: string;
@@ -103,8 +98,6 @@ export async function POST(request: NextRequest) {
     const { token, realmId } = await getQBToken();
     const lastDay = new Date(year, mon, 0);
     const txnDate = lastDay.toISOString().split("T")[0];
-    const startDate = `${month}-01`;
-    const endDate = txnDate;
 
     // ============ STEP 1: Snapshot QB Inventory ============
     const step1Start = Date.now();
@@ -132,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ============ STEP 2: Inventory Adjustment ============
-    const step2Start = Date.now();
+    
     try {
       // Get shrinkage account
       const shrinkageData = await qbQuery(token, realmId, `SELECT Id, Name FROM Account WHERE Name = '${SHRINKAGE_ACCOUNT_NAME}'`);
@@ -217,7 +210,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ============ STEP 3: Amazon Sales Receipt ============
-    const step3Start = Date.now();
+    
     try {
       const receiptRes = await fetch(`${request.nextUrl.origin}/api/qb/sales-receipt`, {
         method: "POST",

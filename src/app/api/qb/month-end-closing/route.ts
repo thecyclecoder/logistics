@@ -8,7 +8,7 @@ const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const SHRINKAGE_ACCOUNT_NAME = "Shrinkage";
+const SHRINKAGE_ACCOUNT_ID = "175"; // Product Costs:Inventory Shrinkage
 
 interface StepResult {
   step: number;
@@ -128,9 +128,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // Get shrinkage account
-      const shrinkageData = await qbQuery(token, realmId, `SELECT Id, Name FROM Account WHERE Name = '${SHRINKAGE_ACCOUNT_NAME}'`);
-      const shrinkageAcct = shrinkageData.QueryResponse?.Account?.[0];
-      if (!shrinkageAcct) throw new Error("Shrinkage account not found in QB");
+      const shrinkageAcctId = SHRINKAGE_ACCOUNT_ID;
 
       // Get inventory audit data to find variances
       const auditRes = await fetch(`${request.nextUrl.origin}/api/inventory-audit`, {
@@ -182,7 +180,7 @@ export async function POST(request: NextRequest) {
       } else {
         const adjBody = {
           TxnDate: txnDate,
-          AdjustAccountRef: { value: shrinkageAcct.Id },
+          AdjustAccountRef: { value: shrinkageAcctId },
           Line: adjLines,
         };
 

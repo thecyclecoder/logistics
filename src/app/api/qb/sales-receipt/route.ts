@@ -110,26 +110,36 @@ export async function POST(request: NextRequest) {
     .select("id, quickbooks_id, quickbooks_name, item_type")
     .in("id", productIds);
 
-  // Build Sales Receipt line items — only FG with BOM (bundle) and FG no BOM (inventory without bundle_id)
-  // All at $0 unit price
-  const lines = [];
-  let lineNum = 1;
+  // Build Sales Receipt line items
+  // Bundle/Group items use GroupLineDetail, regular items use SalesItemLineDetail
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lines: any[] = [];
 
   for (const product of products || []) {
     const sales = salesByProduct.get(product.id);
     if (!sales || sales.units <= 0) continue;
 
-    lines.push({
-      LineNum: lineNum++,
-      DetailType: "SalesItemLineDetail",
-      Amount: 0,
-      Description: `${product.quickbooks_name} - ${channel} ${month}`,
-      SalesItemLineDetail: {
-        ItemRef: { value: product.quickbooks_id },
-        Qty: sales.units,
-        UnitPrice: 0,
-      },
-    });
+    if (product.item_type === "bundle") {
+      // Group items require GroupLineDetail
+      lines.push({
+        DetailType: "GroupLineDetail",
+        GroupLineDetail: {
+          GroupItemRef: { value: product.quickbooks_id },
+          Quantity: sales.units,
+        },
+      });
+    } else {
+      // Regular inventory items use SalesItemLineDetail
+      lines.push({
+        DetailType: "SalesItemLineDetail",
+        Amount: 0,
+        SalesItemLineDetail: {
+          ItemRef: { value: product.quickbooks_id },
+          Qty: sales.units,
+          UnitPrice: 0,
+        },
+      });
+    }
   }
 
   if (lines.length === 0) {
@@ -220,7 +230,7 @@ export async function POST(request: NextRequest) {
     doc_number: receipt.DocNumber,
     txn_date: receipt.TxnDate,
     line_count: lines.length,
-    total_units: lines.reduce((s, l) => s + (l.SalesItemLineDetail?.Qty || 0), 0),
+    total_units: lines.reduce((s: number, l: { GroupLineDetail?: { Quantity: number }; SalesItemLineDetail?: { Qty: number } }) => s + (l.GroupLineDetail?.Quantity || l.SalesItemLineDetail?.Qty || 0), 0),
     channel,
     month,
   });

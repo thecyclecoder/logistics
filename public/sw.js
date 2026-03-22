@@ -34,10 +34,16 @@ self.addEventListener("notificationclick", function (event) {
       url = "/dashboard";
       break;
     case "month_end":
-      url = "/dashboard/month-end";
+      url = "/dashboard";
       break;
     case "variance":
       url = "/dashboard/inventory";
+      break;
+    case "unmapped":
+      url = "/dashboard/mapping";
+      break;
+    case "snapshot_missing":
+      url = "/dashboard/sync";
       break;
     default:
       url = "/dashboard";

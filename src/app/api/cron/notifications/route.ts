@@ -51,10 +51,10 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 3. Month-end closing reminder (after 2nd of month, if previous month not closed)
+  // 3. Month-end closing reminder (from 1st of month, if previous month not closed)
   try {
     const now = new Date();
-    if (now.getUTCDate() >= 2) {
+    if (now.getUTCDate() >= 1) {
       const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const closingMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
 
@@ -70,9 +70,56 @@ export async function GET(request: NextRequest) {
         notifications.push({
           type: "month_end",
           title: "Month-End Closing Due",
-          body: `${monthName} has not been closed. Run the month-end closing process.`,
+          body: `Time to do your ${monthName} month-end closing!`,
         });
       }
+    }
+  } catch {}
+
+  // 4. New unmapped SKUs detected
+  try {
+    const { data: unmapped } = await supabase
+      .from("unmapped_skus")
+      .select("id, external_id, source")
+      .eq("dismissed", false);
+
+    if (unmapped && unmapped.length > 0) {
+      notifications.push({
+        type: "unmapped",
+        title: `${unmapped.length} Unmapped SKU${unmapped.length > 1 ? "s" : ""} Detected`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        body: unmapped.slice(0, 3).map((u: any) => `${u.external_id} (${u.source})`).join(", ") +
+          (unmapped.length > 3 ? ` +${unmapped.length - 3} more` : ""),
+      });
+    }
+  } catch {}
+
+  // 5. Missing snapshots (FBA or 3PL didn't run today)
+  try {
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data: fbaSnap } = await supabase
+      .from("amazon_inventory_snapshots")
+      .select("id")
+      .eq("snapshot_date", today)
+      .limit(1);
+
+    const { data: tplSnap } = await supabase
+      .from("tpl_inventory_snapshots")
+      .select("id")
+      .eq("snapshot_date", today)
+      .limit(1);
+
+    const missing: string[] = [];
+    if (!fbaSnap?.length) missing.push("Amazon FBA");
+    if (!tplSnap?.length) missing.push("Amplifier 3PL");
+
+    if (missing.length > 0) {
+      notifications.push({
+        type: "snapshot_missing",
+        title: "Inventory Snapshot Missing",
+        body: `No snapshot today for: ${missing.join(", ")}. Check sync status.`,
+      });
     }
   } catch {}
 

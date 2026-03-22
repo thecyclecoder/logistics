@@ -139,21 +139,26 @@ export async function POST(request: NextRequest) {
       });
       const auditData = await auditRes.json();
 
-      // Build adjustment lines from BOM components and standalone FG
+      // Build adjustment lines from BOM components and standalone FG.
+      // IMPORTANT: Use (actual - QB) NOT the audit variance (actual - (QB - sales)).
+      // The audit variance includes sales burn, but sales receipts (Steps 3/4) handle
+      // that separately via Group item COGS auto-expansion. The adjustment should only
+      // reconcile QB to match actual channel inventory BEFORE sales are applied.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const adjLines: any[] = [];
 
-      // BOM component variances
+      // BOM component adjustments: actual_total - qb_starting (no sales subtraction)
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
-          if (comp.variance !== 0) {
+          const adjQty = comp.actual_total - comp.qb_starting;
+          if (adjQty !== 0) {
             const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", comp.product_id).single();
             if (prod) {
               adjLines.push({
                 DetailType: "ItemAdjustmentLineDetail",
                 ItemAdjustmentLineDetail: {
                   ItemRef: { value: prod.quickbooks_id },
-                  QtyDiff: comp.variance,
+                  QtyDiff: adjQty,
                 },
               });
             }
@@ -161,16 +166,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Standalone FG variances
+      // Standalone FG adjustments: total - qb_starting (no sales subtraction)
       for (const item of auditData.standalone_finished_goods || []) {
-        if (item.variance !== 0) {
+        const adjQty = item.total - item.qb_starting;
+        if (adjQty !== 0) {
           const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", item.product_id).single();
           if (prod) {
             adjLines.push({
               DetailType: "ItemAdjustmentLineDetail",
               ItemAdjustmentLineDetail: {
                 ItemRef: { value: prod.quickbooks_id },
-                QtyDiff: item.variance,
+                QtyDiff: adjQty,
               },
             });
           }

@@ -64,14 +64,13 @@ export async function POST(request: NextRequest) {
     const docNumber = `SHOPIFY-${mo}${yr.substring(2)}`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const qbLines: any[] = data.lines.map((line: JELine, idx: number) => ({
-      Id: String(idx),
+    const qbLines: any[] = data.lines.map((line: JELine) => ({
       Amount: Math.round(line.amount * 100) / 100,
       DetailType: "JournalEntryLineDetail",
+      Description: line.description,
       JournalEntryLineDetail: {
         PostingType: line.postingType,
         AccountRef: { value: line.accountId, name: line.accountName },
-        Description: line.description,
       },
     }));
 

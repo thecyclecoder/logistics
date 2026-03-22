@@ -195,7 +195,12 @@ export async function POST(request: NextRequest) {
   const config = CHANNEL_CONFIG[channel];
 
   // Create Sales Receipt
+  const channelCode = channel === "amazon" ? "AMZ" : "SHOP";
+  const [yr, mo] = month.split("-");
+  const docNumber = `${channelCode}-${mo}-${yr}`;
+
   const receiptBody = {
+    DocNumber: docNumber,
     TxnDate: txnDate,
     CustomerRef: { value: config.customerRef },
     DepositToAccountRef: { value: config.depositAccount },

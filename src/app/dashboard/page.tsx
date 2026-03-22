@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DollarSign, ShoppingCart, AlertTriangle, Clock, CalendarCheck, TrendingUp } from "lucide-react";
+import { DollarSign, ShoppingCart, AlertTriangle, Clock, CalendarCheck, TrendingUp, Truck, PackageCheck } from "lucide-react";
 
 interface LowStockItem {
   name: string;
@@ -27,6 +27,32 @@ interface Closing {
   completed_at: string | null;
 }
 
+interface ReplenishmentItem {
+  asin: string;
+  seller_sku: string;
+  display_name: string;
+  image_url: string | null;
+  fulfillable: number;
+  transit: number;
+  daily_burn: number;
+  monthly_burn: number;
+  days_of_stock: number;
+  days_with_transit: number;
+  suggested_qty: number;
+  multiplier: number;
+}
+
+interface InTransitItem {
+  asin: string;
+  seller_sku: string;
+  display_name: string;
+  image_url: string | null;
+  fulfillable: number;
+  transit: number;
+  daily_burn: number;
+  days_until_stockout: number;
+}
+
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 }
@@ -45,6 +71,8 @@ export default function DashboardPage() {
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
   const [cronLogs, setCronLogs] = useState<CronLog[]>([]);
   const [closings, setClosings] = useState<Closing[]>([]);
+  const [replenishment, setReplenishment] = useState<ReplenishmentItem[]>([]);
+  const [inTransit, setInTransit] = useState<InTransitItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,11 +89,15 @@ export default function DashboardPage() {
       fetch("/api/overview/cron-logs", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
       // Month-end closings
       fetch("/api/qb/month-end-closing/history", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
-    ]).then(([sales, stock, logs, closes]) => {
+      // FBA replenishment
+      fetch("/api/overview/fba-replenishment", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+    ]).then(([sales, stock, logs, closes, fbaData]) => {
       setSalesData(sales.totals || null);
       if (Array.isArray(stock)) setLowStock(stock);
       if (Array.isArray(logs)) setCronLogs(logs);
       if (Array.isArray(closes)) setClosings(closes);
+      if (fbaData.needs_replenishment) setReplenishment(fbaData.needs_replenishment);
+      if (fbaData.in_transit) setInTransit(fbaData.in_transit);
       setLoading(false);
     });
   }, []);
@@ -114,6 +146,87 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* FBA Replenishment & In Transit */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Replenishment Alerts */}
+        <div className="rounded-xl border border-red-200 bg-white p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <PackageCheck className="h-4 w-4 text-red-500" />
+            <h2 className="text-base font-semibold text-gray-900">
+              FBA Replenishment Needed ({replenishment.length})
+            </h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">ASINs with less than 30 days of FBA stock (including in-transit)</p>
+          {replenishment.length === 0 ? (
+            <p className="text-sm text-gray-400">{loading ? "Loading..." : "All ASINs well stocked"}</p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {replenishment.map((item) => (
+                <div key={item.asin} className={`rounded-lg px-3 py-2 ${item.days_of_stock <= 7 ? "bg-red-50" : "bg-amber-50"}`}>
+                  <div className="flex items-center gap-2">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="" className="h-8 w-8 rounded object-contain border border-gray-100 flex-shrink-0" />
+                    ) : null}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.display_name}</p>
+                      <p className="text-xs text-gray-500">{item.asin} · {item.seller_sku}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5 text-xs">
+                    <span className={`font-medium ${item.days_of_stock <= 7 ? "text-red-700" : "text-amber-700"}`}>
+                      {item.days_of_stock} days left
+                      {item.transit > 0 && <span className="text-gray-400"> ({item.days_with_transit}d w/ transit)</span>}
+                    </span>
+                    <span className="text-gray-500">
+                      FBA: {item.fulfillable} · Burn: {item.monthly_burn}/mo · Send: {item.suggested_qty}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* In Transit */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Truck className="h-4 w-4 text-blue-500" />
+            <h2 className="text-base font-semibold text-gray-900">
+              FBA In Transit ({inTransit.length})
+            </h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">ASINs with pending/shipped/receiving inventory at Amazon</p>
+          {inTransit.length === 0 ? (
+            <p className="text-sm text-gray-400">{loading ? "Loading..." : "Nothing in transit"}</p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {inTransit.map((item) => (
+                <div key={item.asin} className="rounded-lg bg-blue-50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="" className="h-8 w-8 rounded object-contain border border-gray-100 flex-shrink-0" />
+                    ) : null}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.display_name}</p>
+                      <p className="text-xs text-gray-500">{item.asin} · {item.seller_sku}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-blue-700">{item.transit}</p>
+                      <p className="text-xs text-blue-500">in transit</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+                    <span>FBA: {item.fulfillable}</span>
+                    <span>Burn: {item.daily_burn}/day</span>
+                    <span>{item.days_until_stockout}d until stockout</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Low Stock Alerts */}

@@ -9,6 +9,8 @@ const updateSchema = z.object({
   reorder_point: z.number().int().optional(),
   category: z.string().nullable().optional(),
   product_category: z.enum(["finished_good", "component"]).nullable().optional(),
+  revenue_account_id: z.string().nullable().optional(),
+  revenue_account_name: z.string().nullable().optional(),
 });
 
 export async function PATCH(

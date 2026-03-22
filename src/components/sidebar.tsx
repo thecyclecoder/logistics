@@ -10,6 +10,7 @@ import {
   Layers,
   DollarSign,
   BadgeDollarSign,
+  BookOpen,
   LogOut,
   Package as LogoIcon,
   Plug,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/dashboard/inventory", label: "Inventory", icon: Package },
   { href: "/dashboard/sales", label: "Sales", icon: DollarSign },
   { href: "/dashboard/cost-sync", label: "Cost Sync", icon: BadgeDollarSign },
+  { href: "/dashboard/revenue-mapping", label: "Revenue Mapping", icon: BookOpen },
   { href: "/dashboard/connections", label: "Connections", icon: Plug },
 ];
 

@@ -56,16 +56,22 @@ export async function GET() {
     }
   }
 
-  // 5. Manual inventory (fresh client to avoid connection issues)
-  const supabase2 = createServiceClient();
-  const { data: manualEntries, error: manualError } = await supabase2
+  // 5. Manual inventory
+  const { data: manualEntriesAll, error: manualError } = await supabase
     .from("manual_inventory")
-    .select("product_id, quantity, location, note")
-    .eq("active", true);
+    .select("*");
 
-  if (manualError) {
-    console.error("Manual inventory query error:", manualError.message);
-  }
+  // Filter active in JS to bypass any potential RLS/filter issue
+  const manualEntries = (manualEntriesAll || []).filter(
+    (m: { active: boolean }) => m.active === true
+  );
+
+  // Debug: include raw count in meta
+  const _manualDebug = {
+    raw_count: manualEntriesAll?.length || 0,
+    filtered_count: manualEntries.length,
+    error: manualError?.message || null,
+  };
 
   const manualByProduct = new Map<string, Array<{ quantity: number; location: string; note: string | null }>>();
   for (const m of manualEntries || []) {
@@ -282,8 +288,7 @@ export async function GET() {
       fba_snapshot_date: latestFbaDate?.snapshot_date || null,
       tpl_snapshot_date: latestTplDate?.snapshot_date || null,
       manual_entries_count: manualEntries?.length || 0,
-      manual_product_ids: Array.from(manualByProduct.keys()),
-      debug_manual_sample: Array.from(manualByProduct.entries()).map(([k, v]) => ({ product_id: k, total: v.reduce((s: number, m: { quantity: number }) => s + m.quantity, 0) })),
+      manual_debug: _manualDebug,
     },
   });
 }

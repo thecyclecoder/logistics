@@ -57,12 +57,29 @@ export default function InventoryPage() {
   const [note, setNote] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [manualHistory, setManualHistory] = useState<Array<{
+    id: string; quantity: number; location: string; note: string | null;
+    created_at: string; products: { quickbooks_name: string; sku: string | null; image_url: string | null } | null;
+  }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const loadData = () => {
     setLoading(true);
-    fetch("/api/inventory-audit").then((r) => r.json()).then((d) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    Promise.all([
+      fetch("/api/inventory-audit").then((r) => r.json()),
+      fetch("/api/manual-inventory").then((r) => r.json()),
+    ]).then(([auditData, manualData]) => {
+      setData(auditData);
+      if (Array.isArray(manualData)) setManualHistory(manualData);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   };
   useEffect(() => { loadData(); }, []);
+
+  const deleteManualEntry = async (id: string) => {
+    await fetch(`/api/manual-inventory/${id}`, { method: "DELETE" });
+    loadData();
+  };
 
   const openModal = () => {
     setModalOpen(true); setSelectedProductId(""); setQuantity(""); setLocation(""); setNote(""); setProductSearch("");
@@ -164,19 +181,28 @@ export default function InventoryPage() {
                           <td className="px-3 py-1.5 text-right text-emerald-600">{comp.shopify_sold > 0 ? `-${comp.shopify_sold}` : "—"}</td>
                           <td className="px-3 py-1.5 text-right text-gray-600">{comp.expected_remaining}</td>
                           <td className="px-3 py-1.5 text-right text-amber-500">
-                            {comp.implied_fba > 0 || comp.standalone_fba > 0
-                              ? `${comp.implied_fba}${comp.standalone_fba > 0 ? ` +${comp.standalone_fba}` : ""}`
-                              : "—"}
+                            {(() => {
+                              const parts = [];
+                              if (comp.implied_fba > 0) parts.push(String(comp.implied_fba));
+                              if (comp.standalone_fba > 0) parts.push(`+${comp.standalone_fba}`);
+                              return parts.length > 0 ? parts.join(" ") : "—";
+                            })()}
                           </td>
                           <td className="px-3 py-1.5 text-right text-purple-500">
-                            {comp.implied_tpl > 0 || comp.standalone_tpl > 0
-                              ? `${comp.implied_tpl}${comp.standalone_tpl > 0 ? ` +${comp.standalone_tpl}` : ""}`
-                              : "—"}
+                            {(() => {
+                              const parts = [];
+                              if (comp.implied_tpl > 0) parts.push(String(comp.implied_tpl));
+                              if (comp.standalone_tpl > 0) parts.push(`+${comp.standalone_tpl}`);
+                              return parts.length > 0 ? parts.join(" ") : "—";
+                            })()}
                           </td>
                           <td className="px-3 py-1.5 text-right text-teal-500">
-                            {comp.implied_manual > 0 || comp.standalone_manual > 0
-                              ? `${comp.implied_manual}${comp.standalone_manual > 0 ? ` +${comp.standalone_manual}` : ""}`
-                              : "—"}
+                            {(() => {
+                              const parts = [];
+                              if (comp.implied_manual > 0) parts.push(String(comp.implied_manual));
+                              if (comp.standalone_manual > 0) parts.push(`+${comp.standalone_manual}`);
+                              return parts.length > 0 ? parts.join(" ") : "—";
+                            })()}
                           </td>
                           <td className="px-3 py-1.5 text-right font-medium text-gray-700">{comp.actual_total}</td>
                           <td className={`px-3 py-1.5 text-right font-medium ${comp.variance === 0 ? "text-green-600" : comp.variance > 0 ? "text-blue-600" : "text-red-600"}`}>
@@ -285,6 +311,58 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Manual Inventory History */}
+      <div>
+        <button onClick={() => setShowHistory(!showHistory)}
+          className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 hover:text-gray-700">
+          <MapPin className="h-4 w-4" />
+          Manual Inventory Entries ({manualHistory.length})
+          <span className="text-xs normal-case font-normal text-gray-400">{showHistory ? "hide" : "show"}</span>
+        </button>
+        {showHistory && manualHistory.length > 0 && (
+          <div className="mt-3 rounded-xl border border-gray-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 w-10"></th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Product</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-500">Quantity</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Location</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Note</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Added</th>
+                  <th className="px-4 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {manualHistory.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5">
+                      {entry.products?.image_url ? (
+                        <img src={entry.products.image_url} alt="" className="h-8 w-8 rounded-md object-contain bg-white border border-gray-100" />
+                      ) : <div className="h-8 w-8 rounded-md bg-gray-100" />}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-gray-900">{entry.products?.quickbooks_name || "Unknown"}</p>
+                      {entry.products?.sku && <p className="text-xs text-gray-400">{entry.products.sku}</p>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-teal-600">{entry.quantity}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{entry.location}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">{entry.note || "—"}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-400">{new Date(entry.created_at).toLocaleDateString()}</td>
+                    <td className="px-4 py-2.5">
+                      <button onClick={() => deleteManualEntry(entry.id)}
+                        className="rounded-lg p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Manual Inventory Modal */}
       {modalOpen && (

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCredentials } from "@/lib/credentials";
 
+export const dynamic = "force-dynamic";
+
 const QB_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 
 export async function GET() {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCredentials } from "@/lib/credentials";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const creds = await getCredentials("shopify");
   const shopName = creds.shop_name;

@@ -56,22 +56,14 @@ export async function GET() {
     }
   }
 
-  // 5. Manual inventory
-  const { data: manualEntriesAll, error: manualError } = await supabase
+  // 5. Manual inventory (select all, filter in JS — .eq("active", true) has a type issue)
+  const { data: manualEntriesAll } = await supabase
     .from("manual_inventory")
-    .select("*");
+    .select("product_id, quantity, location, note, active");
 
-  // Filter active in JS to bypass any potential RLS/filter issue
   const manualEntries = (manualEntriesAll || []).filter(
-    (m: { active: boolean }) => m.active === true
+    (m: { active: boolean }) => m.active
   );
-
-  // Debug: include raw count in meta
-  const _manualDebug = {
-    raw_count: manualEntriesAll?.length || 0,
-    filtered_count: manualEntries.length,
-    error: manualError?.message || null,
-  };
 
   const manualByProduct = new Map<string, Array<{ quantity: number; location: string; note: string | null }>>();
   for (const m of manualEntries || []) {
@@ -287,8 +279,7 @@ export async function GET() {
       sales_since: monthStart,
       fba_snapshot_date: latestFbaDate?.snapshot_date || null,
       tpl_snapshot_date: latestTplDate?.snapshot_date || null,
-      manual_entries_count: manualEntries?.length || 0,
-      manual_debug: _manualDebug,
+      manual_entries_count: manualEntries.length,
     },
   });
 }

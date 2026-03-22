@@ -16,13 +16,19 @@ export async function GET() {
   const { data, error } = await supabase
     .from("manual_inventory")
     .select("*, products(quickbooks_name, sku, image_url)")
-    .eq("active", true)
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data);
+
+  // Filter active in JS — .eq("active", true) has a type issue in deployed env
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const filtered = (data || []).filter((m: any) => m.active);
+
+  const response = NextResponse.json(filtered);
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return response;
 }
 
 export async function POST(request: NextRequest) {

@@ -270,7 +270,7 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b.actual_total > 0)),
     standalone_finished_goods: standaloneItems.filter((i) => i.total > 0 || i.qb_starting > 0),
     unattached_components: unattachedItems.filter((i) => i.total > 0),
@@ -282,4 +282,6 @@ export async function GET() {
       manual_entries_count: manualEntries.length,
     },
   });
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return response;
 }

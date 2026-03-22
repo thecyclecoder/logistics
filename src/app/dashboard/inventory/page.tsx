@@ -66,8 +66,8 @@ export default function InventoryPage() {
   const loadData = () => {
     setLoading(true);
     Promise.all([
-      fetch("/api/inventory-audit").then((r) => r.json()),
-      fetch("/api/manual-inventory").then((r) => r.json()),
+      fetch("/api/inventory-audit?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/manual-inventory?t=" + Date.now(), { cache: "no-store" }).then((r) => r.json()),
     ]).then(([auditData, manualData]) => {
       setData(auditData);
       if (Array.isArray(manualData)) setManualHistory(manualData);

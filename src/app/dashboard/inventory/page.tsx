@@ -181,28 +181,19 @@ export default function InventoryPage() {
                           <td className="px-3 py-1.5 text-right text-emerald-600">{comp.shopify_sold > 0 ? `-${comp.shopify_sold}` : "—"}</td>
                           <td className="px-3 py-1.5 text-right text-gray-600">{comp.expected_remaining}</td>
                           <td className="px-3 py-1.5 text-right text-amber-500">
-                            {(() => {
-                              const parts = [];
-                              if (comp.implied_fba > 0) parts.push(String(comp.implied_fba));
-                              if (comp.standalone_fba > 0) parts.push(`+${comp.standalone_fba}`);
-                              return parts.length > 0 ? parts.join(" ") : "—";
-                            })()}
+                            {comp.implied_fba + comp.standalone_fba > 0
+                              ? comp.implied_fba + comp.standalone_fba
+                              : "—"}
                           </td>
                           <td className="px-3 py-1.5 text-right text-purple-500">
-                            {(() => {
-                              const parts = [];
-                              if (comp.implied_tpl > 0) parts.push(String(comp.implied_tpl));
-                              if (comp.standalone_tpl > 0) parts.push(`+${comp.standalone_tpl}`);
-                              return parts.length > 0 ? parts.join(" ") : "—";
-                            })()}
+                            {comp.implied_tpl + comp.standalone_tpl > 0
+                              ? comp.implied_tpl + comp.standalone_tpl
+                              : "—"}
                           </td>
-                          <td className="px-3 py-1.5 text-right text-teal-500">
-                            {(() => {
-                              const parts = [];
-                              if (comp.implied_manual > 0) parts.push(String(comp.implied_manual));
-                              if (comp.standalone_manual > 0) parts.push(`+${comp.standalone_manual}`);
-                              return parts.length > 0 ? parts.join(" ") : "—";
-                            })()}
+                          <td className="px-3 py-1.5 text-right text-teal-600 font-medium">
+                            {comp.implied_manual + comp.standalone_manual > 0
+                              ? comp.implied_manual + comp.standalone_manual
+                              : "—"}
                           </td>
                           <td className="px-3 py-1.5 text-right font-medium text-gray-700">{comp.actual_total}</td>
                           <td className={`px-3 py-1.5 text-right font-medium ${comp.variance === 0 ? "text-green-600" : comp.variance > 0 ? "text-blue-600" : "text-red-600"}`}>

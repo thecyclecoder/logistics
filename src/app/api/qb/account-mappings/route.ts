@@ -12,34 +12,142 @@ const MAPPING_DEFINITIONS: Record<string, {
   description: string;
   entityType: "account" | "customer";
   accountFilter?: string; // QB AccountType filter
+  group?: string; // UI grouping
 }> = {
+  // --- Month-End Closing ---
   shrinkage_account: {
     label: "Shrinkage Account",
     description: "Expense account for inventory adjustments (shrinkage)",
     entityType: "account",
     accountFilter: "Expense",
+    group: "Month-End Closing",
   },
   amazon_customer: {
     label: "Amazon Customer",
     description: "QB Customer for Amazon sales receipts",
     entityType: "customer",
+    group: "Month-End Closing",
   },
   shopify_customer: {
     label: "Shopify Customer",
     description: "QB Customer for Shopify sales receipts",
     entityType: "customer",
+    group: "Month-End Closing",
   },
   amazon_deposit_account: {
     label: "Amazon Deposit Account",
-    description: "Account where Amazon sales receipts deposit to",
+    description: "Clearing account for Amazon sales receipts",
     entityType: "account",
     accountFilter: "Other Current Asset",
+    group: "Month-End Closing",
   },
   shopify_deposit_account: {
     label: "Shopify Deposit Account",
-    description: "Account where Shopify sales receipts deposit to",
+    description: "Clearing account for Shopify sales receipts",
     entityType: "account",
     accountFilter: "Other Current Asset",
+    group: "Month-End Closing",
+  },
+  // --- Journal Entry: Revenue & Contra ---
+  discounts_account: {
+    label: "Discounts & Coupons",
+    description: "Contra income account for discounts",
+    entityType: "account",
+    accountFilter: "Income",
+    group: "Journal Entry",
+  },
+  sales_tax_payable: {
+    label: "Sales Tax Payable",
+    description: "Liability account for collected sales tax",
+    entityType: "account",
+    accountFilter: "Other Current Liability",
+    group: "Journal Entry",
+  },
+  shipping_income: {
+    label: "Shipping Income",
+    description: "Income account for shipping revenue",
+    entityType: "account",
+    accountFilter: "Income",
+    group: "Journal Entry",
+  },
+  chargebacks_account: {
+    label: "Chargebacks",
+    description: "Contra income account for chargebacks",
+    entityType: "account",
+    accountFilter: "Income",
+    group: "Journal Entry",
+  },
+  refunds_account: {
+    label: "Refunds",
+    description: "Contra income account for refunds",
+    entityType: "account",
+    accountFilter: "Income",
+    group: "Journal Entry",
+  },
+  // --- Journal Entry: Processor Clearing & Fees ---
+  shopify_clearing: {
+    label: "Shopify Payments Clearing",
+    description: "Clearing account for Shopify Payments deposits",
+    entityType: "account",
+    accountFilter: "Other Current Asset",
+    group: "Payment Processors",
+  },
+  shopify_txn_fees: {
+    label: "Shopify Transaction Fees",
+    description: "Expense account for Shopify Payments processing fees",
+    entityType: "account",
+    accountFilter: "Expense",
+    group: "Payment Processors",
+  },
+  paypal_clearing: {
+    label: "PayPal Clearing",
+    description: "Clearing account for PayPal deposits",
+    entityType: "account",
+    accountFilter: "Other Current Asset",
+    group: "Payment Processors",
+  },
+  paypal_txn_fees: {
+    label: "PayPal Transaction Fees",
+    description: "Expense account for PayPal processing fees",
+    entityType: "account",
+    accountFilter: "Expense",
+    group: "Payment Processors",
+  },
+  braintree_clearing: {
+    label: "Braintree Clearing",
+    description: "Clearing account for Braintree deposits",
+    entityType: "account",
+    accountFilter: "Other Current Asset",
+    group: "Payment Processors",
+  },
+  braintree_txn_fees: {
+    label: "Braintree Transaction Fees",
+    description: "Expense account for Braintree processing fees",
+    entityType: "account",
+    accountFilter: "Expense",
+    group: "Payment Processors",
+  },
+  walmart_clearing: {
+    label: "Walmart Clearing",
+    description: "Clearing account for Walmart carried balances",
+    entityType: "account",
+    accountFilter: "Other Current Asset",
+    group: "Payment Processors",
+  },
+  // --- Journal Entry: Other ---
+  gift_card_liability: {
+    label: "Gift Card Liability",
+    description: "Liability account for gift card balances",
+    entityType: "account",
+    accountFilter: "Other Current Liability",
+    group: "Journal Entry",
+  },
+  shopify_other_adjustments: {
+    label: "Shopify Other Adjustments",
+    description: "Account for Shopify miscellaneous adjustments",
+    entityType: "account",
+    accountFilter: "Income",
+    group: "Journal Entry",
   },
 };
 
@@ -92,39 +200,24 @@ export async function GET() {
       return res.json();
     };
 
-    // Fetch expense accounts
-    const expenseData = await qbQuery(
-      "SELECT Id, Name, FullyQualifiedName, AccountType, AccountSubType FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold') MAXRESULTS 200"
-    );
-    const expenseAccounts = (expenseData.QueryResponse?.Account || []).map(
-      (a: { Id: string; FullyQualifiedName: string; AccountType: string }) => ({
-        id: a.Id,
-        name: a.FullyQualifiedName,
-        type: a.AccountType,
-      })
-    );
+    // Fetch all account types we need
+    const [expenseData, assetData, incomeData, liabilityData, customerData] = await Promise.all([
+      qbQuery("SELECT Id, Name, FullyQualifiedName, AccountType FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold') MAXRESULTS 200"),
+      qbQuery("SELECT Id, Name, FullyQualifiedName, AccountType FROM Account WHERE AccountType IN ('Other Current Asset', 'Bank') MAXRESULTS 200"),
+      qbQuery("SELECT Id, Name, FullyQualifiedName, AccountType FROM Account WHERE AccountType IN ('Income', 'Other Income') MAXRESULTS 200"),
+      qbQuery("SELECT Id, Name, FullyQualifiedName, AccountType FROM Account WHERE AccountType IN ('Other Current Liability') MAXRESULTS 200"),
+      qbQuery("SELECT Id, DisplayName FROM Customer MAXRESULTS 200"),
+    ]);
 
-    // Fetch asset/bank accounts (for deposit)
-    const assetData = await qbQuery(
-      "SELECT Id, Name, FullyQualifiedName, AccountType FROM Account WHERE AccountType IN ('Other Current Asset', 'Bank') MAXRESULTS 200"
-    );
-    const assetAccounts = (assetData.QueryResponse?.Account || []).map(
-      (a: { Id: string; FullyQualifiedName: string; AccountType: string }) => ({
-        id: a.Id,
-        name: a.FullyQualifiedName,
-        type: a.AccountType,
-      })
-    );
+    const mapAccounts = (data: { QueryResponse?: { Account?: Array<{ Id: string; FullyQualifiedName: string; AccountType: string }> } }) =>
+      (data.QueryResponse?.Account || []).map((a) => ({ id: a.Id, name: a.FullyQualifiedName, type: a.AccountType }));
 
-    // Fetch customers
-    const customerData = await qbQuery(
-      "SELECT Id, DisplayName FROM Customer MAXRESULTS 200"
-    );
+    const expenseAccounts = mapAccounts(expenseData);
+    const assetAccounts = mapAccounts(assetData);
+    const incomeAccounts = mapAccounts(incomeData);
+    const liabilityAccounts = mapAccounts(liabilityData);
     const customers = (customerData.QueryResponse?.Customer || []).map(
-      (c: { Id: string; DisplayName: string }) => ({
-        id: c.Id,
-        name: c.DisplayName,
-      })
+      (c: { Id: string; DisplayName: string }) => ({ id: c.Id, name: c.DisplayName })
     );
 
     // Get current mappings
@@ -142,6 +235,8 @@ export async function GET() {
       options: {
         expense_accounts: expenseAccounts,
         asset_accounts: assetAccounts,
+        income_accounts: incomeAccounts,
+        liability_accounts: liabilityAccounts,
         customers,
       },
       current: mappingsMap,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   CheckCircle2,
   XCircle,
@@ -24,6 +24,7 @@ interface MappingDef {
   description: string;
   entityType: "account" | "customer";
   accountFilter?: string;
+  group?: string;
 }
 
 interface MappingState {
@@ -31,6 +32,8 @@ interface MappingState {
   options: {
     expense_accounts: QBOption[];
     asset_accounts: QBOption[];
+    income_accounts: QBOption[];
+    liability_accounts: QBOption[];
     customers: QBOption[];
   };
   current: Record<string, { qb_id: string; qb_name: string }>;
@@ -97,8 +100,13 @@ export default function QuickBooksConnectionClient({
     const def = mappingData.definitions[key];
     if (!def) return [];
     if (def.entityType === "customer") return mappingData.options.customers;
-    if (def.accountFilter === "Expense") return mappingData.options.expense_accounts;
-    return mappingData.options.asset_accounts;
+    switch (def.accountFilter) {
+      case "Expense": return mappingData.options.expense_accounts;
+      case "Income": return mappingData.options.income_accounts;
+      case "Other Current Liability": return mappingData.options.liability_accounts;
+      case "Other Current Asset": return mappingData.options.asset_accounts;
+      default: return mappingData.options.asset_accounts;
+    }
   };
 
   const handleSaveMapping = async (key: string, qbId: string) => {
@@ -247,51 +255,67 @@ export default function QuickBooksConnectionClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {Object.entries(mappingData.definitions).map(([key, def]) => {
-                    const current = mappingData.current[key];
-                    const options = getOptionsForKey(key);
-
-                    return (
-                      <tr key={key} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900">{def.label}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{def.description}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="relative">
-                            <select
-                              value={current?.qb_id || ""}
-                              onChange={(e) => {
-                                if (e.target.value) handleSaveMapping(key, e.target.value);
-                              }}
-                              disabled={savingMapping === key}
-                              className={`w-full rounded-lg border px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                                current
-                                  ? "border-green-300 bg-green-50 text-green-800"
-                                  : "border-amber-300 bg-amber-50 text-amber-800"
-                              }`}
-                            >
-                              <option value="">
-                                {def.entityType === "customer" ? "— Select customer —" : "— Select account —"}
-                              </option>
-                              {options.map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.name}{o.type ? ` (${o.type})` : ""}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {current ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <AlertTriangle className="h-4 w-4 text-amber-400" />
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {(() => {
+                    // Group definitions by group field
+                    const groups = new Map<string, Array<[string, MappingDef]>>();
+                    for (const [key, def] of Object.entries(mappingData.definitions)) {
+                      const g = def.group || "Other";
+                      const list = groups.get(g) || [];
+                      list.push([key, def]);
+                      groups.set(g, list);
+                    }
+                    return Array.from(groups.entries()).map(([groupName, items]) => (
+                      <React.Fragment key={groupName}>
+                        <tr>
+                          <td colSpan={3} className="px-4 py-2 bg-gray-50">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{groupName}</p>
+                          </td>
+                        </tr>
+                        {items.map(([key, def]) => {
+                          const current = mappingData.current[key];
+                          const options = getOptionsForKey(key);
+                          return (
+                            <tr key={key} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <p className="font-medium text-gray-900">{def.label}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{def.description}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <select
+                                  value={current?.qb_id || ""}
+                                  onChange={(e) => {
+                                    if (e.target.value) handleSaveMapping(key, e.target.value);
+                                  }}
+                                  disabled={savingMapping === key}
+                                  className={`w-full rounded-lg border px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                                    current
+                                      ? "border-green-300 bg-green-50 text-green-800"
+                                      : "border-amber-300 bg-amber-50 text-amber-800"
+                                  }`}
+                                >
+                                  <option value="">
+                                    {def.entityType === "customer" ? "— Select customer —" : "— Select account —"}
+                                  </option>
+                                  {options.map((o) => (
+                                    <option key={o.id} value={o.id}>
+                                      {o.name}{o.type ? ` (${o.type})` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="px-4 py-3">
+                                {current ? (
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

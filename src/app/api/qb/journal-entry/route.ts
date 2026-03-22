@@ -254,8 +254,9 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     orderUrl = nm ? nm[1] : null;
   }
 
-  // Aggregate revenue by revenue account
+  // Aggregate revenue by revenue account AND gross by processor (from order gateway)
   const revenueByAccount = new Map<string, { id: string; name: string; amount: number }>();
+  const grossByProcessor = new Map<string, number>(); // from order total_price grouped by gateway
   let totalShipping = 0;
   let totalTax = 0;
   let totalDiscounts = 0;
@@ -265,6 +266,16 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     totalShipping += Number(order.total_shipping_price_set?.shop_money?.amount || 0);
     totalTax += Number(order.total_tax || 0);
     totalDiscounts += Number(order.total_discounts || 0);
+
+    // Track gross by processor (from payment gateway on order)
+    // For split-payment orders, divide total equally among gateways (rare case)
+    const gateways = (order.payment_gateway_names || []) as string[];
+    const orderTotal = Number(order.total_price || 0);
+    const perGateway = gateways.length > 0 ? orderTotal / gateways.length : 0;
+    for (const gw of gateways) {
+      const processor = gatewayLookup.get(gw) || "other";
+      grossByProcessor.set(processor, (grossByProcessor.get(processor) || 0) + perGateway);
+    }
 
     // Revenue per line item
     for (const item of order.line_items || []) {
@@ -353,6 +364,8 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
   }
 
   // === PROCESSOR LINES ===
+  // Gross clearing debits come from ORDER data (accrual basis, grouped by gateway).
+  // Fees, refunds, chargebacks come from PROCESSOR APIs (payout/transaction data).
   const processorConfigs = [
     { key: "shopify_payments", clearingKey: "shopify_clearing", feeKey: "shopify_txn_fees", label: "Shopify Payments" },
     { key: "paypal", clearingKey: "paypal_clearing", feeKey: "paypal_txn_fees", label: "PayPal" },
@@ -360,19 +373,19 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
   ];
 
   for (const config of processorConfigs) {
-    const proc = processors[config.key];
-    if (!proc) continue;
+    const proc = processors[config.key] || { gross: 0, fees: 0, refunds: 0, chargebacks: 0, adjustments: 0 };
+    const orderGross = round2(grossByProcessor.get(config.key) || 0);
 
     const clearingMapping = qbMappings[config.clearingKey];
     const feeMapping = qbMappings[config.feeKey];
 
-    // Gross deposits → DEBIT clearing
-    if (proc.gross > 0) {
+    // Gross from orders → DEBIT clearing (accrual basis)
+    if (orderGross > 0) {
       lines.push({
         postingType: "Debit",
         accountId: clearingMapping.qb_id,
         accountName: clearingMapping.qb_name,
-        amount: round2(proc.gross),
+        amount: orderGross,
         description: `${config.label} deposits - ${month}`,
       });
     }
@@ -411,31 +424,48 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     }
 
     // Net deductions (fees + refunds + chargebacks) → CREDIT clearing
-    const deductions = proc.fees + proc.refunds + proc.chargebacks;
+    const deductions = round2(proc.fees + proc.refunds + proc.chargebacks);
     if (deductions > 0) {
       lines.push({
         postingType: "Credit",
         accountId: clearingMapping.qb_id,
         accountName: clearingMapping.qb_name,
-        amount: round2(deductions),
+        amount: deductions,
         description: `${config.label} deductions - ${month}`,
       });
     }
   }
 
-  // Walmart (if exists)
-  if (processors.walmart) {
-    const wm = processors.walmart;
-    const wmClearing = qbMappings.walmart_clearing;
-    if (wm.gross > 0 && wmClearing) {
-      lines.push({
-        postingType: "Debit",
-        accountId: wmClearing.qb_id,
-        accountName: wmClearing.qb_name,
-        amount: round2(wm.gross),
-        description: `Walmart deposits - ${month}`,
-      });
+  // Other processors from orders (walmart, gift_card, other)
+  const otherProcessors: Array<{ key: string; clearingKey: string; label: string }> = [
+    { key: "walmart", clearingKey: "walmart_clearing", label: "Walmart" },
+  ];
+  for (const config of otherProcessors) {
+    const orderGross = round2(grossByProcessor.get(config.key) || 0);
+    if (orderGross > 0) {
+      const clearingMapping = qbMappings[config.clearingKey];
+      if (clearingMapping) {
+        lines.push({
+          postingType: "Debit",
+          accountId: clearingMapping.qb_id,
+          accountName: clearingMapping.qb_name,
+          amount: orderGross,
+          description: `${config.label} deposits - ${month}`,
+        });
+      }
     }
+  }
+
+  // Gift card payments → debit gift card liability (reduces the liability)
+  const giftCardGross = round2(grossByProcessor.get("gift_card") || 0);
+  if (giftCardGross > 0 && qbMappings.gift_card_liability) {
+    lines.push({
+      postingType: "Debit",
+      accountId: qbMappings.gift_card_liability.qb_id,
+      accountName: qbMappings.gift_card_liability.qb_name,
+      amount: giftCardGross,
+      description: `Gift card redemptions - ${month}`,
+    });
   }
 
   // Calculate totals
@@ -478,6 +508,7 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
       tax: totalTax,
       discounts: totalDiscounts,
       processors,
+      gross_by_processor: Object.fromEntries(Array.from(grossByProcessor)),
       order_count: allOrders.length,
       total_debits: round2(lines.filter((l) => l.postingType === "Debit").reduce((s, l) => s + l.amount, 0)),
       total_credits: round2(lines.filter((l) => l.postingType === "Credit").reduce((s, l) => s + l.amount, 0)),

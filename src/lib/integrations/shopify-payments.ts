@@ -49,28 +49,31 @@ export async function aggregateShopifyPayments(month: string): Promise<ShopifyPa
 
   // Aggregate from payout summaries
   let grossSales = 0;
-  let fees = 0;
+  let chargesFees = 0;
   let refunds = 0;
-  let adjustments = 0;
+  let refundsFees = 0;
+  let chargebacks = 0; // adjustments_gross = chargebacks/disputes
+  let chargebackFees = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const payout of allPayouts) {
     const s = payout.summary || {};
     grossSales += Number(s.charges_gross_amount || 0);
-    fees += Number(s.charges_fee_amount || 0);
-    refunds += Number(s.refunds_gross_amount || 0);
-    fees += Number(s.refunds_fee_amount || 0);
-    adjustments += Number(s.adjustments_gross_amount || 0);
-    fees += Number(s.adjustments_fee_amount || 0);
-    fees += Number(s.reserved_funds_fee_amount || 0);
+    chargesFees += Number(s.charges_fee_amount || 0);
+    refunds += Math.abs(Number(s.refunds_gross_amount || 0));
+    refundsFees += Number(s.refunds_fee_amount || 0);
+    chargebacks += Math.abs(Number(s.adjustments_gross_amount || 0));
+    chargebackFees += Number(s.adjustments_fee_amount || 0);
   }
+
+  const totalFees = Math.abs(chargesFees) + Math.abs(refundsFees) + Math.abs(chargebackFees);
 
   return {
     gross_sales: grossSales,
-    processing_fees: Math.abs(fees),
-    refunds: Math.abs(refunds),
-    chargebacks: 0, // Shopify Payments chargebacks are in adjustments
-    adjustments: Math.abs(adjustments),
+    processing_fees: totalFees,
+    refunds,
+    chargebacks,
+    adjustments: 0,
     net_deposits: allPayouts.reduce((s, p) => s + Number(p.amount || 0), 0),
     payout_count: allPayouts.length,
   };

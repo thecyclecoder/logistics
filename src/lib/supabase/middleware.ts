@@ -39,6 +39,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/legal/") ||
     pathname.startsWith("/api/cron/") ||
     pathname === "/api/push/send" ||
+    pathname.startsWith("/api/amazon/") ||
     pathname.startsWith("/api/qb/sync-processors") ||
     pathname.startsWith("/api/qb/journal-entry") ||
     pathname.startsWith("/api/overview/") ||

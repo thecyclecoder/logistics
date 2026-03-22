@@ -17,6 +17,7 @@ import {
   Plug,
   Menu,
   X,
+  ShoppingCart,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/dashboard/products", label: "Products", icon: Layers },
   { href: "/dashboard/inventory", label: "Inventory", icon: Package },
   { href: "/dashboard/sales", label: "Sales", icon: DollarSign },
+  { href: "/dashboard/amazon", label: "Amazon Margins", icon: ShoppingCart },
   { href: "/dashboard/cost-sync", label: "Cost Sync", icon: BadgeDollarSign },
   { href: "/dashboard/revenue-mapping", label: "Revenue Mapping", icon: BookOpen },
   { href: "/dashboard/month-end", label: "Month-End Closing", icon: CalendarCheck },

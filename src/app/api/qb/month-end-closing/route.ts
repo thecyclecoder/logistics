@@ -260,6 +260,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ============ STEP 5: Re-snapshot QB Inventory (Post-Closing) ============
+    // Build a map of post-closing QB quantities for variance check
+    const postQbByProduct = new Map<string, number>();
     try {
       // Need fresh token since sales receipts used the previous one
       const { token: freshToken, realmId: freshRealmId } = await getQBToken();
@@ -269,6 +271,7 @@ export async function POST(request: NextRequest) {
       for (const item of qbItems) {
         const { data: product } = await supabase.from("products").select("id").eq("quickbooks_id", item.Id).single();
         if (product && item.QtyOnHand !== undefined) {
+          postQbByProduct.set(product.id, Math.floor(item.QtyOnHand));
           await supabase.from("inventory_snapshots").insert({
             product_id: product.id,
             source: "quickbooks",
@@ -285,6 +288,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ============ STEP 6: Variance Check ============
+    // Compare post-closing QB inventory directly against channel inventory (FBA + 3PL + Manual).
+    // Do NOT re-run the full inventory-audit formula (QB Start - Sales = Expected) because
+    // after closing, QB already reflects the adjustment + sales receipts — that would double-count.
     try {
       const auditRes = await fetch(`${request.nextUrl.origin}/api/inventory-audit`, {
         headers: { cookie: request.headers.get("cookie") || "" },
@@ -295,13 +301,31 @@ export async function POST(request: NextRequest) {
       let totalVariance = 0;
       const variances: Array<{ name: string; variance: number }> = [];
 
+      // For FG with BOM: compare post-closing QB (component level) vs actual channel inventory
       for (const fg of auditData.finished_goods_with_bom || []) {
-        if (fg.variance !== 0) variances.push({ name: fg.name, variance: fg.variance });
-        totalVariance += Math.abs(fg.variance);
+        for (const comp of fg.bom_items || []) {
+          const qbQty = postQbByProduct.get(comp.product_id);
+          if (qbQty === undefined) continue;
+          // Actual = implied from FG channels + standalone component inventory
+          const actual = comp.actual_total;
+          const diff = actual - qbQty;
+          if (diff !== 0) {
+            variances.push({ name: comp.name, variance: diff });
+            totalVariance += Math.abs(diff);
+          }
+        }
       }
+
+      // For standalone FG: compare post-closing QB vs actual channel inventory
       for (const item of auditData.standalone_finished_goods || []) {
-        if (item.variance !== 0) variances.push({ name: item.name, variance: item.variance });
-        totalVariance += Math.abs(item.variance);
+        const qbQty = postQbByProduct.get(item.product_id);
+        if (qbQty === undefined) continue;
+        const actual = item.total;
+        const diff = actual - qbQty;
+        if (diff !== 0) {
+          variances.push({ name: item.name, variance: diff });
+          totalVariance += Math.abs(diff);
+        }
       }
 
       const passed = totalVariance === 0;
@@ -314,7 +338,7 @@ export async function POST(request: NextRequest) {
         step: 6,
         name: "Variance Check",
         status: passed ? "success" : "error",
-        message: passed ? "All variances are zero — inventory is reconciled!" : `${variances.length} products still have variance (total: ${totalVariance})`,
+        message: passed ? "All variances are zero — QB matches channel inventory!" : `${variances.length} items still have variance (total: ${totalVariance})`,
         details: variances.length > 0 ? variances : undefined,
       });
     } catch (err) {

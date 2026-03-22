@@ -95,8 +95,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const { token, realmId } = await getQBToken();
-    const lastDay = new Date(year, mon, 0);
-    const txnDate = lastDay.toISOString().split("T")[0];
+    // In debug mode, use today's date so QB applies entries immediately
+    const txnDate = debug
+      ? new Date().toISOString().split("T")[0]
+      : new Date(year, mon, 0).toISOString().split("T")[0];
 
     // ============ STEP 1: Snapshot QB Inventory ============
     const step1Start = Date.now();
@@ -213,7 +215,7 @@ export async function POST(request: NextRequest) {
       const receiptRes = await fetch(`${request.nextUrl.origin}/api/qb/sales-receipt`, {
         method: "POST",
         headers: { "Content-Type": "application/json", cookie: request.headers.get("cookie") || "" },
-        body: JSON.stringify({ channel: "amazon", month }),
+        body: JSON.stringify({ channel: "amazon", month, debug }),
       });
       const receiptData = await receiptRes.json();
 
@@ -238,7 +240,7 @@ export async function POST(request: NextRequest) {
       const receiptRes = await fetch(`${request.nextUrl.origin}/api/qb/sales-receipt`, {
         method: "POST",
         headers: { "Content-Type": "application/json", cookie: request.headers.get("cookie") || "" },
-        body: JSON.stringify({ channel: "shopify", month }),
+        body: JSON.stringify({ channel: "shopify", month, debug }),
       });
       const receiptData = await receiptRes.json();
 

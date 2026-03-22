@@ -10,7 +10,7 @@ const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 export async function POST(request: NextRequest) {
   try {
   const body = await request.json();
-  const { channel, month } = body as { channel: "amazon" | "shopify"; month: string };
+  const { channel, month, debug } = body as { channel: "amazon" | "shopify"; month: string; debug?: boolean };
 
   if (!channel || !month || !["amazon", "shopify"].includes(channel)) {
     return NextResponse.json({ error: "channel (amazon|shopify) and month (YYYY-MM) required" }, { status: 400 });
@@ -19,9 +19,12 @@ export async function POST(request: NextRequest) {
   // Parse month to get date range and last day
   const [year, mon] = month.split("-").map(Number);
   const lastDay = new Date(year, mon, 0);
-  const txnDate = lastDay.toISOString().split("T")[0];
+  // In debug mode, use today's date so QB applies entries immediately
+  const txnDate = debug
+    ? new Date().toISOString().split("T")[0]
+    : lastDay.toISOString().split("T")[0];
   const startDate = `${month}-01`;
-  const endDate = txnDate;
+  const endDate = lastDay.toISOString().split("T")[0];
 
   const supabase = createServiceClient();
 

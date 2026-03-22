@@ -1,0 +1,478 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getCredentials } from "@/lib/credentials";
+import { getQBMappings } from "@/lib/qb-mappings";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+interface JELine {
+  postingType: "Debit" | "Credit";
+  accountId: string;
+  accountName: string;
+  amount: number;
+  description: string;
+}
+
+// GET: preview the journal entry without creating it
+// POST: create or update the journal entry in QuickBooks
+export async function GET(request: NextRequest) {
+  const month = request.nextUrl.searchParams.get("month");
+  if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });
+
+  try {
+    const data = await buildJournalEntryData(month);
+    return NextResponse.json(data);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { month, overrides } = body as {
+      month: string;
+      overrides?: { braintree_fees?: number };
+    };
+    if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });
+
+    const data = await buildJournalEntryData(month, overrides);
+
+    // Validate balance
+    const totalDebits = data.lines.filter((l: JELine) => l.postingType === "Debit").reduce((s: number, l: JELine) => s + l.amount, 0);
+    const totalCredits = data.lines.filter((l: JELine) => l.postingType === "Credit").reduce((s: number, l: JELine) => s + l.amount, 0);
+    const diff = Math.abs(totalDebits - totalCredits);
+    if (diff > 0.01) {
+      return NextResponse.json({
+        error: `Journal entry does not balance. Debits: $${totalDebits.toFixed(2)}, Credits: $${totalCredits.toFixed(2)}, Diff: $${diff.toFixed(2)}`,
+        data,
+      }, { status: 400 });
+    }
+
+    // Build QB Journal Entry payload
+    const [yr, mo] = month.split("-");
+    const lastDay = new Date(Number(yr), Number(mo), 0);
+    const txnDate = lastDay.toISOString().split("T")[0];
+    const docNumber = `SHOPIFY-${mo}${yr.substring(2)}`;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const qbLines: any[] = data.lines.map((line: JELine, idx: number) => ({
+      Id: String(idx),
+      Amount: Math.round(line.amount * 100) / 100,
+      DetailType: "JournalEntryLineDetail",
+      JournalEntryLineDetail: {
+        PostingType: line.postingType,
+        AccountRef: { value: line.accountId, name: line.accountName },
+        Description: line.description,
+      },
+    }));
+
+    // Get QB token
+    const qbCreds = await getCredentials("quickbooks");
+    const qbTokensRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/qb_tokens?id=eq.current&select=refresh_token,realm_id`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }, cache: "no-store" }
+    );
+    const qbTokens = (await qbTokensRes.json())?.[0];
+    if (!qbTokens) return NextResponse.json({ error: "QB not connected" }, { status: 400 });
+
+    const basicAuth = Buffer.from(`${qbCreds.client_id}:${qbCreds.client_secret}`).toString("base64");
+    const tokenRes = await fetch(QB_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basicAuth}` },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: qbTokens.refresh_token }),
+    });
+    const td = await tokenRes.json();
+    if (!td.access_token) return NextResponse.json({ error: "QB token refresh failed" }, { status: 500 });
+
+    await fetch(`${SUPABASE_URL}/rest/v1/qb_tokens?id=eq.current`, {
+      method: "PATCH",
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: td.refresh_token, updated_at: new Date().toISOString() }),
+    });
+
+    // Check if JE already exists for this month (update instead of create)
+    const supabase = createServiceClient();
+    const { data: existingClosings } = await supabase
+      .from("month_end_closings")
+      .select("shopify_journal_entry_id")
+      .eq("closing_month", month);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingJeId = (existingClosings || []).find((c: any) => c.shopify_journal_entry_id)?.shopify_journal_entry_id;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const jePayload: any = {
+      DocNumber: docNumber,
+      TxnDate: txnDate,
+      PrivateNote: `Shopify Monthly Journal Entry - ${month}`,
+      Line: qbLines,
+    };
+
+    let qbUrl: string;
+    if (existingJeId) {
+      // Fetch current SyncToken to update
+      const fetchRes = await fetch(
+        `https://quickbooks.api.intuit.com/v3/company/${qbTokens.realm_id}/journalentry/${existingJeId}?minorversion=65`,
+        { headers: { Authorization: `Bearer ${td.access_token}`, Accept: "application/json" } }
+      );
+      const existing = await fetchRes.json();
+      jePayload.Id = existingJeId;
+      jePayload.SyncToken = existing.JournalEntry?.SyncToken || "0";
+      qbUrl = `https://quickbooks.api.intuit.com/v3/company/${qbTokens.realm_id}/journalentry?minorversion=65`;
+    } else {
+      qbUrl = `https://quickbooks.api.intuit.com/v3/company/${qbTokens.realm_id}/journalentry?minorversion=65`;
+    }
+
+    const createRes = await fetch(qbUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${td.access_token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(jePayload),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      return NextResponse.json({ error: "QB Journal Entry failed", details: errText.substring(0, 500) }, { status: 500 });
+    }
+
+    const result = await createRes.json();
+    const je = result.JournalEntry;
+
+    return NextResponse.json({
+      success: true,
+      journal_entry_id: je.Id,
+      doc_number: je.DocNumber,
+      txn_date: je.TxnDate,
+      total_debits: totalDebits,
+      total_credits: totalCredits,
+      line_count: qbLines.length,
+      updated: !!existingJeId,
+    });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+}
+
+async function buildJournalEntryData(month: string, overrides?: { braintree_fees?: number }) {
+  const supabase = createServiceClient();
+
+  // 1. Get processor summaries
+  const { data: processorData } = await supabase
+    .from("payment_processor_summaries")
+    .select("*")
+    .eq("closing_month", month);
+
+  const processors: Record<string, { gross: number; fees: number; refunds: number; chargebacks: number; adjustments: number }> = {};
+  for (const p of processorData || []) {
+    processors[p.processor] = {
+      gross: Number(p.gross_sales),
+      fees: Number(p.processing_fees),
+      refunds: Number(p.refunds),
+      chargebacks: Number(p.chargebacks),
+      adjustments: Number(p.adjustments),
+    };
+  }
+
+  // Apply overrides
+  if (overrides?.braintree_fees !== undefined && processors.braintree) {
+    processors.braintree.fees = overrides.braintree_fees;
+  }
+
+  // 2. Get Shopify revenue by product (from orders, NOT amazon)
+  const shopTokens = await fetch(`${SUPABASE_URL}/rest/v1/shopify_tokens?select=shop_domain,access_token&limit=1`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    cache: "no-store",
+  });
+  const shopToken = (await shopTokens.json())?.[0];
+  if (!shopToken) throw new Error("Shopify not connected");
+
+  // Get gateway mappings
+  const { data: gatewayMaps } = await supabase.from("gateway_mappings").select("gateway_name, processor");
+  const gatewayLookup = new Map<string, string>();
+  for (const g of gatewayMaps || []) gatewayLookup.set(g.gateway_name, g.processor);
+
+  // Get SKU mappings (shopify variant → product)
+  const { data: allMappings } = await supabase
+    .from("sku_mappings")
+    .select("external_id, product_id, unit_multiplier, active")
+    .eq("source", "shopify");
+  const mappingLookup = new Map<string, string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const m of (allMappings || []).filter((m: any) => m.active)) {
+    mappingLookup.set(m.external_id, m.product_id);
+  }
+
+  // Get product revenue account mappings
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, quickbooks_name, revenue_account_id, revenue_account_name");
+  const productLookup = new Map<string, { name: string; rev_acct_id: string | null; rev_acct_name: string | null }>();
+  for (const p of products || []) {
+    productLookup.set(p.id, { name: p.quickbooks_name, rev_acct_id: p.revenue_account_id, rev_acct_name: p.revenue_account_name });
+  }
+
+  // Fetch all Shopify orders for the month (paginated)
+  const [year, mon] = month.split("-").map(Number);
+  const lastDay = new Date(year, mon, 0).getDate();
+  const startDate = `${month}-01T00:00:00Z`;
+  const endDate = `${month}-${String(lastDay).padStart(2, "0")}T23:59:59Z`;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let allOrders: any[] = [];
+  let orderUrl: string | null = `https://${shopToken.shop_domain}/admin/api/2024-01/orders.json?status=any&limit=250&created_at_min=${startDate}&created_at_max=${endDate}&fields=id,line_items,total_shipping_price_set,total_tax,total_discounts,subtotal_price,total_price,payment_gateway_names,financial_status`;
+
+  while (orderUrl) {
+    const res: Response = await fetch(orderUrl, {
+      headers: { "X-Shopify-Access-Token": shopToken.access_token },
+    });
+    if (!res.ok) throw new Error(`Shopify Orders API error: ${res.status}`);
+    const data = await res.json();
+    // Only include paid/partially_refunded orders (not voided/refunded)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const validOrders = (data.orders || []).filter((o: any) =>
+      o.financial_status === "paid" || o.financial_status === "partially_refunded" || o.financial_status === "refunded"
+    );
+    allOrders = allOrders.concat(validOrders);
+
+    const lh: string = res.headers.get("link") || "";
+    const nm: RegExpMatchArray | null = lh.match(/<([^>]+)>;\s*rel="next"/);
+    orderUrl = nm ? nm[1] : null;
+  }
+
+  // Aggregate revenue by revenue account
+  const revenueByAccount = new Map<string, { id: string; name: string; amount: number }>();
+  let totalShipping = 0;
+  let totalTax = 0;
+  let totalDiscounts = 0;
+  let unmappedRevenue = 0;
+
+  for (const order of allOrders) {
+    totalShipping += Number(order.total_shipping_price_set?.shop_money?.amount || 0);
+    totalTax += Number(order.total_tax || 0);
+    totalDiscounts += Number(order.total_discounts || 0);
+
+    // Revenue per line item
+    for (const item of order.line_items || []) {
+      const variantKey = `${item.product_id}-${item.variant_id}`;
+      const productId = mappingLookup.get(variantKey);
+      const product = productId ? productLookup.get(productId) : null;
+
+      const lineRevenue = Number(item.price || 0) * (item.quantity || 1);
+
+      if (product?.rev_acct_id && product?.rev_acct_name) {
+        const existing = revenueByAccount.get(product.rev_acct_id) || { id: product.rev_acct_id, name: product.rev_acct_name, amount: 0 };
+        existing.amount += lineRevenue;
+        revenueByAccount.set(product.rev_acct_id, existing);
+      } else {
+        unmappedRevenue += lineRevenue;
+      }
+    }
+  }
+
+  // 3. Get QB account mappings
+  const mappingKeys = [
+    "discounts_account", "sales_tax_payable", "shipping_income",
+    "chargebacks_account", "refunds_account",
+    "shopify_clearing", "shopify_txn_fees",
+    "paypal_clearing", "paypal_txn_fees",
+    "braintree_clearing", "braintree_txn_fees",
+    "walmart_clearing", "shopify_other_adjustments",
+  ];
+  const qbMappings = await getQBMappings(mappingKeys);
+
+  // 4. Build journal entry lines
+  const lines: JELine[] = [];
+
+  // === CREDIT SIDE (Revenue) ===
+  // Product revenue by account
+  for (const [, acct] of Array.from(revenueByAccount)) {
+    if (acct.amount > 0) {
+      lines.push({
+        postingType: "Credit",
+        accountId: acct.id,
+        accountName: acct.name,
+        amount: round2(acct.amount),
+        description: `${acct.name} - ${month}`,
+      });
+    }
+  }
+
+  // Shipping income
+  if (totalShipping > 0) {
+    lines.push({
+      postingType: "Credit",
+      accountId: qbMappings.shipping_income.qb_id,
+      accountName: qbMappings.shipping_income.qb_name,
+      amount: round2(totalShipping),
+      description: `Shipping Income - ${month}`,
+    });
+  }
+
+  // Sales tax
+  if (totalTax > 0) {
+    lines.push({
+      postingType: "Credit",
+      accountId: qbMappings.sales_tax_payable.qb_id,
+      accountName: qbMappings.sales_tax_payable.qb_name,
+      amount: round2(totalTax),
+      description: `Sales Tax Collected - ${month}`,
+    });
+  }
+
+  // === DEBIT SIDE (Contra-revenue) ===
+  // Discounts
+  if (totalDiscounts > 0) {
+    lines.push({
+      postingType: "Debit",
+      accountId: qbMappings.discounts_account.qb_id,
+      accountName: qbMappings.discounts_account.qb_name,
+      amount: round2(totalDiscounts),
+      description: `Discounts & Coupons - ${month}`,
+    });
+  }
+
+  // === PROCESSOR LINES ===
+  const processorConfigs = [
+    { key: "shopify_payments", clearingKey: "shopify_clearing", feeKey: "shopify_txn_fees", label: "Shopify Payments" },
+    { key: "paypal", clearingKey: "paypal_clearing", feeKey: "paypal_txn_fees", label: "PayPal" },
+    { key: "braintree", clearingKey: "braintree_clearing", feeKey: "braintree_txn_fees", label: "Braintree" },
+  ];
+
+  for (const config of processorConfigs) {
+    const proc = processors[config.key];
+    if (!proc) continue;
+
+    const clearingMapping = qbMappings[config.clearingKey];
+    const feeMapping = qbMappings[config.feeKey];
+
+    // Gross deposits → DEBIT clearing
+    if (proc.gross > 0) {
+      lines.push({
+        postingType: "Debit",
+        accountId: clearingMapping.qb_id,
+        accountName: clearingMapping.qb_name,
+        amount: round2(proc.gross),
+        description: `${config.label} deposits - ${month}`,
+      });
+    }
+
+    // Processing fees → DEBIT expense
+    if (proc.fees > 0) {
+      lines.push({
+        postingType: "Debit",
+        accountId: feeMapping.qb_id,
+        accountName: feeMapping.qb_name,
+        amount: round2(proc.fees),
+        description: `${config.label} transaction fees - ${month}`,
+      });
+    }
+
+    // Refunds → DEBIT contra-revenue
+    if (proc.refunds > 0) {
+      lines.push({
+        postingType: "Debit",
+        accountId: qbMappings.refunds_account.qb_id,
+        accountName: qbMappings.refunds_account.qb_name,
+        amount: round2(proc.refunds),
+        description: `Refunds - ${config.label} - ${month}`,
+      });
+    }
+
+    // Chargebacks → DEBIT contra-revenue
+    if (proc.chargebacks > 0) {
+      lines.push({
+        postingType: "Debit",
+        accountId: qbMappings.chargebacks_account.qb_id,
+        accountName: qbMappings.chargebacks_account.qb_name,
+        amount: round2(proc.chargebacks),
+        description: `Chargebacks - ${config.label} - ${month}`,
+      });
+    }
+
+    // Net deductions (fees + refunds + chargebacks) → CREDIT clearing
+    const deductions = proc.fees + proc.refunds + proc.chargebacks;
+    if (deductions > 0) {
+      lines.push({
+        postingType: "Credit",
+        accountId: clearingMapping.qb_id,
+        accountName: clearingMapping.qb_name,
+        amount: round2(deductions),
+        description: `${config.label} deductions - ${month}`,
+      });
+    }
+  }
+
+  // Walmart (if exists)
+  if (processors.walmart) {
+    const wm = processors.walmart;
+    const wmClearing = qbMappings.walmart_clearing;
+    if (wm.gross > 0 && wmClearing) {
+      lines.push({
+        postingType: "Debit",
+        accountId: wmClearing.qb_id,
+        accountName: wmClearing.qb_name,
+        amount: round2(wm.gross),
+        description: `Walmart deposits - ${month}`,
+      });
+    }
+  }
+
+  // Calculate totals
+  const totalDebits = lines.filter((l) => l.postingType === "Debit").reduce((s, l) => s + l.amount, 0);
+  const totalCredits = lines.filter((l) => l.postingType === "Credit").reduce((s, l) => s + l.amount, 0);
+
+  // If there's a rounding difference, add an adjustment line
+  const balanceDiff = round2(totalDebits - totalCredits);
+  if (balanceDiff !== 0 && Math.abs(balanceDiff) <= 1) {
+    if (balanceDiff > 0) {
+      // Debits > Credits — need more credit
+      const adjustAcct = qbMappings.shopify_other_adjustments;
+      lines.push({
+        postingType: "Credit",
+        accountId: adjustAcct.qb_id,
+        accountName: adjustAcct.qb_name,
+        amount: Math.abs(balanceDiff),
+        description: `Rounding adjustment - ${month}`,
+      });
+    } else {
+      // Credits > Debits — need more debit
+      const adjustAcct = qbMappings.shopify_other_adjustments;
+      lines.push({
+        postingType: "Debit",
+        accountId: adjustAcct.qb_id,
+        accountName: adjustAcct.qb_name,
+        amount: Math.abs(balanceDiff),
+        description: `Rounding adjustment - ${month}`,
+      });
+    }
+  }
+
+  return {
+    month,
+    lines,
+    summary: {
+      revenue_accounts: Array.from(revenueByAccount.values()),
+      unmapped_revenue: unmappedRevenue,
+      shipping: totalShipping,
+      tax: totalTax,
+      discounts: totalDiscounts,
+      processors,
+      order_count: allOrders.length,
+      total_debits: round2(lines.filter((l) => l.postingType === "Debit").reduce((s, l) => s + l.amount, 0)),
+      total_credits: round2(lines.filter((l) => l.postingType === "Credit").reduce((s, l) => s + l.amount, 0)),
+    },
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}

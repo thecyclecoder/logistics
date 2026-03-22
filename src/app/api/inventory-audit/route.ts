@@ -26,14 +26,14 @@ export async function GET() {
     .limit(1)
     .single();
 
-  const fbaByAsin = new Map<string, number>();
+  const fbaByAsin = new Map<string, { fulfillable: number; transit: number }>();
   if (latestFbaDate) {
     const { data: fbaSnaps } = await supabase
       .from("amazon_inventory_snapshots")
-      .select("asin, quantity_fulfillable")
+      .select("asin, quantity_fulfillable, quantity_transit")
       .eq("snapshot_date", latestFbaDate.snapshot_date);
     for (const s of fbaSnaps || []) {
-      fbaByAsin.set(s.asin, s.quantity_fulfillable);
+      fbaByAsin.set(s.asin, { fulfillable: s.quantity_fulfillable, transit: s.quantity_transit || 0 });
     }
   }
 
@@ -136,14 +136,19 @@ export async function GET() {
 
   function getChannelInventory(productId: string) {
     const pm = mappingsByProduct.get(productId) || [];
-    let fba = 0, tpl = 0;
+    let fba = 0, fbaTransit = 0, tpl = 0;
     for (const m of pm) {
-      if (m.source === "amazon") { fba += (fbaByAsin.get(m.external_id) || 0) * m.multiplier; }
-      else if (m.source === "3pl") { tpl += (tplBySku.get(m.external_id) || 0) * m.multiplier; }
+      if (m.source === "amazon") {
+        const snap = fbaByAsin.get(m.external_id);
+        fba += (snap?.fulfillable || 0) * m.multiplier;
+        fbaTransit += (snap?.transit || 0) * m.multiplier;
+      } else if (m.source === "3pl") {
+        tpl += (tplBySku.get(m.external_id) || 0) * m.multiplier;
+      }
     }
     const manualList = manualByProduct.get(productId) || [];
     const manual = manualList.reduce((s, m) => s + m.quantity, 0);
-    return { fba, tpl, manual, manual_entries: manualList, total: fba + tpl + manual };
+    return { fba, fba_transit: fbaTransit, tpl, manual, total: fba + tpl + manual };
   }
 
   function getSalesBurn(productId: string) {
@@ -213,11 +218,11 @@ export async function GET() {
 
       // Current inventory: implied from parent FG + standalone component inventory
       const impliedFba = inv.fba * bomQty;
+      const impliedFbaTransit = inv.fba_transit * bomQty;
       const impliedTpl = inv.tpl * bomQty;
       const impliedManual = inv.manual * bomQty;
       const impliedTotal = inv.total * bomQty;
 
-      // Standalone = component's own channel inventory (held separately, not in FG)
       const compInv = getChannelInventory(comp.id);
 
       const actualTotal = impliedTotal + compInv.total;
@@ -232,10 +237,12 @@ export async function GET() {
         total_sold: compTotalSold,
         expected_remaining: compExpected,
         implied_fba: impliedFba,
+        implied_fba_transit: impliedFbaTransit,
         implied_tpl: impliedTpl,
         implied_manual: impliedManual,
         implied_total: impliedTotal,
         standalone_fba: compInv.fba,
+        standalone_fba_transit: compInv.fba_transit,
         standalone_tpl: compInv.tpl,
         standalone_manual: compInv.manual,
         standalone_total: compInv.total,
@@ -246,7 +253,7 @@ export async function GET() {
 
     return {
       product_id: bundle.id, name: bundle.name, sku: bundle.sku, image_url: bundle.image_url,
-      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, finished_good_units: inv.total,
+      fba: inv.fba, fba_transit: inv.fba_transit, tpl: inv.tpl, manual: inv.manual, finished_good_units: inv.total,
       qb_starting: qbStart, amazon_sold: burn.amazon_sold, shopify_sold: burn.shopify_sold,
       total_sold: burn.total_sold, expected_remaining: expected,
       variance: inv.total - expected,
@@ -261,7 +268,7 @@ export async function GET() {
     const expected = qbStart - burn.total_sold;
     return {
       product_id: p.id, name: p.name, sku: p.sku, image_url: p.image_url,
-      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, total: inv.total,
+      fba: inv.fba, fba_transit: inv.fba_transit, tpl: inv.tpl, manual: inv.manual, total: inv.total,
       qb_starting: qbStart, amazon_sold: burn.amazon_sold, shopify_sold: burn.shopify_sold,
       total_sold: burn.total_sold, expected_remaining: expected,
       variance: inv.total - expected,
@@ -272,7 +279,7 @@ export async function GET() {
     const inv = getChannelInventory(p.id);
     return {
       product_id: p.id, name: p.name, sku: p.sku, image_url: p.image_url,
-      fba: inv.fba, tpl: inv.tpl, manual: inv.manual, total: inv.total,
+      fba: inv.fba, fba_transit: inv.fba_transit, tpl: inv.tpl, manual: inv.manual, total: inv.total,
     };
   });
 

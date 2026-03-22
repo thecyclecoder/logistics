@@ -8,14 +8,14 @@ interface BomItem {
   bom_quantity: number;
   qb_starting: number; amazon_sold: number; shopify_sold: number;
   total_sold: number; expected_remaining: number;
-  implied_fba: number; implied_tpl: number; implied_manual: number; implied_total: number;
-  standalone_fba: number; standalone_tpl: number; standalone_manual: number; standalone_total: number;
+  implied_fba: number; implied_fba_transit: number; implied_tpl: number; implied_manual: number; implied_total: number;
+  standalone_fba: number; standalone_fba_transit: number; standalone_tpl: number; standalone_manual: number; standalone_total: number;
   actual_total: number; variance: number;
 }
 
 interface FGWithBOM {
   product_id: string; name: string; sku: string | null; image_url: string | null;
-  fba: number; tpl: number; manual: number; finished_good_units: number;
+  fba: number; fba_transit: number; tpl: number; manual: number; finished_good_units: number;
   qb_starting: number; amazon_sold: number; shopify_sold: number;
   total_sold: number; expected_remaining: number; variance: number;
   bom_items: BomItem[];
@@ -23,14 +23,14 @@ interface FGWithBOM {
 
 interface StandaloneItem {
   product_id: string; name: string; sku: string | null; image_url: string | null;
-  fba: number; tpl: number; manual: number; total: number;
+  fba: number; fba_transit: number; tpl: number; manual: number; total: number;
   qb_starting: number; amazon_sold: number; shopify_sold: number;
   total_sold: number; expected_remaining: number; variance: number;
 }
 
 interface UnattachedItem {
   product_id: string; name: string; sku: string | null; image_url: string | null;
-  fba: number; tpl: number; manual: number; total: number;
+  fba: number; fba_transit: number; tpl: number; manual: number; total: number;
 }
 
 interface ProductOption { id: string; quickbooks_name: string; sku: string | null; image_url: string | null; }
@@ -133,6 +133,7 @@ export default function InventoryPage() {
                     <th className="px-3 py-3 text-right font-medium text-emerald-600">Shop Sold</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Expected</th>
                     <th className="px-3 py-3 text-right font-medium text-amber-600">FBA</th>
+                    <th className="px-3 py-3 text-right font-medium text-amber-400">Transit</th>
                     <th className="px-3 py-3 text-right font-medium text-purple-600">3PL</th>
                     <th className="px-3 py-3 text-right font-medium text-teal-600">Manual</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Actual</th>
@@ -157,6 +158,7 @@ export default function InventoryPage() {
                         <td className="px-3 py-2.5 text-right text-emerald-700">{fg.shopify_sold > 0 ? `-${fg.shopify_sold}` : "—"}</td>
                         <td className="px-3 py-2.5 text-right font-medium text-gray-700">{fg.expected_remaining}</td>
                         <td className="px-3 py-2.5 text-right text-amber-600">{fg.fba || "—"}</td>
+                        <td className="px-3 py-2.5 text-right text-amber-400">{fg.fba_transit || "—"}</td>
                         <td className="px-3 py-2.5 text-right text-purple-600">{fg.tpl || "—"}</td>
                         <td className="px-3 py-2.5 text-right text-teal-600">{fg.manual || "—"}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{fg.finished_good_units}</td>
@@ -183,6 +185,11 @@ export default function InventoryPage() {
                           <td className="px-3 py-1.5 text-right text-amber-500">
                             {comp.implied_fba + comp.standalone_fba > 0
                               ? comp.implied_fba + comp.standalone_fba
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-amber-400">
+                            {comp.implied_fba_transit + comp.standalone_fba_transit > 0
+                              ? comp.implied_fba_transit + comp.standalone_fba_transit
                               : "—"}
                           </td>
                           <td className="px-3 py-1.5 text-right text-purple-500">
@@ -227,6 +234,7 @@ export default function InventoryPage() {
                     <th className="px-3 py-3 text-right font-medium text-emerald-600">Shop Sold</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Expected</th>
                     <th className="px-3 py-3 text-right font-medium text-amber-600">FBA</th>
+                    <th className="px-3 py-3 text-right font-medium text-amber-400">Transit</th>
                     <th className="px-3 py-3 text-right font-medium text-purple-600">3PL</th>
                     <th className="px-3 py-3 text-right font-medium text-teal-600">Manual</th>
                     <th className="px-3 py-3 text-right font-medium text-gray-500">Actual</th>
@@ -249,6 +257,7 @@ export default function InventoryPage() {
                       <td className="px-3 py-2.5 text-right text-emerald-700">{item.shopify_sold > 0 ? `-${item.shopify_sold}` : "—"}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-gray-700">{item.expected_remaining}</td>
                       <td className="px-3 py-2.5 text-right text-amber-600">{item.fba || "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-amber-400">{item.fba_transit || "—"}</td>
                       <td className="px-3 py-2.5 text-right text-purple-600">{item.tpl || "—"}</td>
                       <td className="px-3 py-2.5 text-right text-teal-600">{item.manual || "—"}</td>
                       <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.total}</td>
@@ -276,6 +285,7 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-left font-medium text-gray-500 w-10"></th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">Component</th>
                   <th className="px-4 py-3 text-right font-medium text-amber-600">FBA</th>
+                  <th className="px-4 py-3 text-right font-medium text-amber-400">Transit</th>
                   <th className="px-4 py-3 text-right font-medium text-purple-600">3PL</th>
                   <th className="px-4 py-3 text-right font-medium text-teal-600">Manual</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-500">Total</th>
@@ -292,6 +302,7 @@ export default function InventoryPage() {
                       {item.sku && <p className="text-xs text-gray-400">{item.sku}</p>}
                     </td>
                     <td className="px-4 py-2.5 text-right text-amber-600">{item.fba || "—"}</td>
+                    <td className="px-4 py-2.5 text-right text-amber-400">{item.fba_transit || "—"}</td>
                     <td className="px-4 py-2.5 text-right text-purple-600">{item.tpl || "—"}</td>
                     <td className="px-4 py-2.5 text-right text-teal-600">{item.manual || "—"}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{item.total}</td>

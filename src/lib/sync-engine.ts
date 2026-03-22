@@ -259,15 +259,24 @@ export async function syncAmazonInventory(): Promise<SyncResult> {
         seller_sku: s.sellerSku,
       });
 
-      // Write daily FBA inventory snapshot
+      // Write daily FBA inventory snapshot with transit
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const details = (s.inventoryDetails || {}) as any;
+      const transitQty =
+        (details.inboundWorkingQuantity || 0) +
+        (details.inboundShippedQuantity || 0) +
+        (details.inboundReceivingQuantity || 0) +
+        (details.reservedQuantity?.totalReservedQuantity || 0);
+
       await supabase.from("amazon_inventory_snapshots").upsert(
         {
           asin: s.asin,
           seller_sku: s.sellerSku,
           fn_sku: s.fnSku,
           quantity_fulfillable: s.totalFulfillableQuantity,
-          quantity_inbound: (s.inventoryDetails as Record<string, number> | undefined)?.inboundWorkingQuantity || 0,
-          quantity_reserved: (s.inventoryDetails as Record<string, number> | undefined)?.reservedQuantity || 0,
+          quantity_inbound: (details.inboundShippedQuantity || 0) + (details.inboundReceivingQuantity || 0),
+          quantity_reserved: details.reservedQuantity?.totalReservedQuantity || 0,
+          quantity_transit: transitQty,
           snapshot_date: new Date().toISOString().split("T")[0],
         },
         { onConflict: "asin,snapshot_date" }

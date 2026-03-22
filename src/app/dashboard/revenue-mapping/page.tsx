@@ -20,12 +20,18 @@ interface Product {
   bundle_id: string | null;
 }
 
+interface QBMapping {
+  qb_id: string;
+  qb_name: string;
+}
+
 export default function RevenueMappingPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [shippingMapping, setShippingMapping] = useState<QBMapping | null>(null);
 
   useEffect(() => {
     fetch("/api/qb/revenue-accounts")
@@ -36,6 +42,15 @@ export default function RevenueMappingPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    // Load shipping income mapping from qb_account_mappings
+    fetch("/api/qb/account-mappings")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.current?.shipping_income) {
+          setShippingMapping(data.current.shipping_income);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Only show FG products (bundles + standalone FG, not components)
@@ -153,6 +168,45 @@ export default function RevenueMappingPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
+            {/* Shipping / Shipping Protection row */}
+            <tr className="hover:bg-gray-50 bg-blue-50/30">
+              <td className="px-4 py-3">
+                <p className="font-medium text-gray-900">Shipping & Shipping Protection</p>
+                <p className="text-xs text-gray-400 mt-0.5">Includes shipping charges and shipping protection products</p>
+              </td>
+              <td className="px-4 py-3">
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
+                  Shipping
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <SearchableSelect
+                  options={accounts.map((a) => ({ id: a.id, name: a.name }))}
+                  value={shippingMapping?.qb_id || ""}
+                  onChange={async (id) => {
+                    const acct = accounts.find((a) => a.id === id);
+                    if (!acct) return;
+                    setSaving("shipping");
+                    await fetch("/api/qb/account-mappings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ key: "shipping_income", qb_id: id, qb_name: acct.name }),
+                    });
+                    setShippingMapping({ qb_id: id, qb_name: acct.name });
+                    setSaving(null);
+                  }}
+                  placeholder="— Select shipping income account —"
+                  disabled={saving === "shipping"}
+                />
+              </td>
+              <td className="px-4 py-3">
+                {shippingMapping ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-amber-400" />
+                )}
+              </td>
+            </tr>
             {filtered.map((product) => (
               <tr key={product.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">

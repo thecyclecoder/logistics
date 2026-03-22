@@ -122,9 +122,9 @@ export default function InventoryPage() {
         <div>
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Finished Goods with BOM</h2>
           <div className="rounded-xl border border-gray-200 bg-white">
-            <div className="overflow-x-auto">
+            <div>
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10">
+                <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="px-3 py-3 text-left font-medium text-gray-500 w-10"></th>
                     <th className="px-3 py-3 text-left font-medium text-gray-500">Product / Component</th>
@@ -223,9 +223,9 @@ export default function InventoryPage() {
         <div>
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Finished Goods — No BOM</h2>
           <div className="rounded-xl border border-gray-200 bg-white">
-            <div className="overflow-x-auto">
+            <div>
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10">
+                <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="px-3 py-3 text-left font-medium text-gray-500 w-10"></th>
                     <th className="px-3 py-3 text-left font-medium text-gray-500">Product</th>

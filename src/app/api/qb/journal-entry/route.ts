@@ -220,6 +220,12 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     productLookup.set(p.id, { name: p.quickbooks_name, rev_acct_id: p.revenue_account_id, rev_acct_name: p.revenue_account_name });
   }
 
+  // Get shipping protection product IDs
+  const { data: shippingProtectionRows } = await supabase
+    .from("shipping_protection_products")
+    .select("shopify_product_id");
+  const shippingProtectionIds = new Set((shippingProtectionRows || []).map((r) => r.shopify_product_id));
+
   // Fetch all Shopify orders for the month (paginated)
   const [year, mon] = month.split("-").map(Number);
   const lastDay = new Date(year, mon, 0).getDate();
@@ -262,11 +268,17 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
 
     // Revenue per line item
     for (const item of order.line_items || []) {
+      const lineRevenue = Number(item.price || 0) * (item.quantity || 1);
+
+      // Check if this is a shipping protection product → route to shipping income
+      if (shippingProtectionIds.has(String(item.product_id))) {
+        totalShipping += lineRevenue;
+        continue;
+      }
+
       const variantKey = `${item.product_id}-${item.variant_id}`;
       const productId = mappingLookup.get(variantKey);
       const product = productId ? productLookup.get(productId) : null;
-
-      const lineRevenue = Number(item.price || 0) * (item.quantity || 1);
 
       if (product?.rev_acct_id && product?.rev_acct_name) {
         const existing = revenueByAccount.get(product.rev_acct_id) || { id: product.rev_acct_id, name: product.rev_acct_name, amount: 0 };

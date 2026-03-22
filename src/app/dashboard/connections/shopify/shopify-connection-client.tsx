@@ -8,6 +8,8 @@ import {
   ShoppingBag,
   RefreshCw,
   CreditCard,
+  Shield,
+  Trash2,
 } from "lucide-react";
 import ShopifyReviewClient from "@/components/shopify-review-client";
 
@@ -40,6 +42,9 @@ export default function ShopifyConnectionClient({
   const [processorOptions, setProcessorOptions] = useState<ProcessorOption[]>([]);
   const [savingGateway, setSavingGateway] = useState<string | null>(null);
   const [newGateway, setNewGateway] = useState("");
+  const [shippingProducts, setShippingProducts] = useState<Array<{ shopify_product_id: string; title: string }>>([]);
+  const [allShopifyProducts, setAllShopifyProducts] = useState<Array<{ id: string; title: string }>>([]);
+  const [addingShipping, setAddingShipping] = useState(false);
 
   useEffect(() => {
     if (initialConnected) {
@@ -48,6 +53,13 @@ export default function ShopifyConnectionClient({
         .then((data) => {
           if (data.mappings) setGatewayMappings(data.mappings);
           if (data.processor_options) setProcessorOptions(data.processor_options);
+        })
+        .catch(() => {});
+      fetch("/api/shipping-protection")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.flagged) setShippingProducts(data.flagged);
+          if (data.shopify_products) setAllShopifyProducts(data.shopify_products);
         })
         .catch(() => {});
     }
@@ -207,6 +219,73 @@ export default function ShopifyConnectionClient({
           </div>
         )}
       </div>
+
+      {/* Shipping Protection Products */}
+      {initialConnected && (
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="h-5 w-5 text-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Shipping Protection Products</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            Revenue from these Shopify products will be categorized as shipping income in journal entries.
+          </p>
+
+          <div className="space-y-2 mb-4">
+            {shippingProducts.map((sp) => (
+              <div key={sp.shopify_product_id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{sp.title}</p>
+                  <p className="text-xs text-gray-400 font-mono">Product ID: {sp.shopify_product_id}</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    await fetch("/api/shipping-protection", {
+                      method: "DELETE",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ shopify_product_id: sp.shopify_product_id }),
+                    });
+                    setShippingProducts((prev) => prev.filter((p) => p.shopify_product_id !== sp.shopify_product_id));
+                  }}
+                  className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <select
+              disabled={addingShipping}
+              onChange={async (e) => {
+                const productId = e.target.value;
+                if (!productId) return;
+                const product = allShopifyProducts.find((p) => p.id === productId);
+                setAddingShipping(true);
+                const res = await fetch("/api/shipping-protection", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ shopify_product_id: productId, title: product?.title || "Unknown" }),
+                });
+                if (res.ok) {
+                  setShippingProducts((prev) => [...prev, { shopify_product_id: productId, title: product?.title || "Unknown" }]);
+                }
+                setAddingShipping(false);
+                e.target.value = "";
+              }}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">Add a product...</option>
+              {allShopifyProducts
+                .filter((p) => !shippingProducts.some((sp) => sp.shopify_product_id === p.id))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Payment Gateway Mapping */}
       {initialConnected && gatewayMappings.length > 0 && (

@@ -36,7 +36,12 @@ export async function updateSession(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/restricted" ||
     pathname === "/auth/callback" ||
-    pathname.startsWith("/api/cron/")
+    pathname.startsWith("/legal/") ||
+    pathname.startsWith("/api/cron/") ||
+    pathname === "/api/push/send" ||
+    pathname.startsWith("/api/overview/") ||
+    pathname === "/api/inventory-audit" ||
+    pathname === "/api/sales-data"
   ) {
     return supabaseResponse;
   }

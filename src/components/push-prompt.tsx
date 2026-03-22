@@ -33,14 +33,22 @@ export default function PushPrompt() {
   }, []);
 
   const handleEnable = async () => {
-    if (!("Notification" in window)) {
-      alert("Add this app to your Home Screen first, then tap this button again.");
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      alert("To enable notifications, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and tap Enable again.");
       return;
+    }
+    // Ensure service worker is registered first
+    try {
+      await navigator.serviceWorker.register("/sw.js");
+    } catch {
+      // may already be registered
     }
     const { subscribeToPush } = await import("@/lib/push");
     const result = await subscribeToPush();
     if (result.success) {
       setShowPrompt(false);
+    } else if (result.reason === "denied") {
+      alert("Notifications were denied. Please enable them in your device settings for this app.");
     }
   };
 

@@ -1,0 +1,119 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase/server";
+
+import webpush from "web-push";
+
+export const runtime = "nodejs";
+
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = createServiceClient();
+  const notifications: Array<{ type: string; title: string; body: string }> = [];
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
+
+  // 1. Low stock (< 3 months runway)
+  try {
+    const res = await fetch(`${baseUrl}/api/overview/low-stock`, { cache: "no-store" }).catch(() => null);
+    if (res?.ok) {
+      const items = await res.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const critical = (Array.isArray(items) ? items : []).filter((i: any) => i.months_left < 3);
+      if (critical.length > 0) {
+        notifications.push({
+          type: "low_stock",
+          title: `Low Stock: ${critical.length} product${critical.length > 1 ? "s" : ""}`,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          body: critical.slice(0, 3).map((i: any) => `${i.name} (${i.months_left.toFixed(1)}mo)`).join(", "),
+        });
+      }
+    }
+  } catch {}
+
+  // 2. FBA replenishment (< 14 days stock)
+  try {
+    const res = await fetch(`${baseUrl}/api/overview/fba-replenishment`, { cache: "no-store" }).catch(() => null);
+    if (res?.ok) {
+      const data = await res.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const urgent = (data.needs_replenishment || []).filter((i: any) => i.days_of_stock < 14);
+      if (urgent.length > 0) {
+        notifications.push({
+          type: "replenishment",
+          title: `FBA Replenishment: ${urgent.length} ASIN${urgent.length > 1 ? "s" : ""} urgent`,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          body: urgent.slice(0, 3).map((i: any) => `${i.display_name} (${i.days_of_stock}d)`).join(", "),
+        });
+      }
+    }
+  } catch {}
+
+  // 3. Month-end closing reminder (after 2nd of month, if previous month not closed)
+  try {
+    const now = new Date();
+    if (now.getUTCDate() >= 2) {
+      const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const closingMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+
+      const { data: closings } = await supabase
+        .from("month_end_closings")
+        .select("id, status")
+        .eq("closing_month", closingMonth);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const completed = (closings || []).some((c: any) => c.status === "completed");
+      if (!completed) {
+        const monthName = prevDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+        notifications.push({
+          type: "month_end",
+          title: "Month-End Closing Due",
+          body: `${monthName} has not been closed. Run the month-end closing process.`,
+        });
+      }
+    }
+  } catch {}
+
+  if (notifications.length === 0) {
+    return NextResponse.json({ message: "No alerts", sent: 0 });
+  }
+
+  // Get all subscriptions and send
+  const { data: subs } = await supabase
+    .from("push_subscriptions")
+    .select("id, subscription");
+
+  if (!subs?.length) {
+    return NextResponse.json({ alerts: notifications.length, sent: 0, reason: "no_subscriptions" });
+  }
+
+  webpush.setVapidDetails(
+    "mailto:dylan@superfoodscompany.com",
+    process.env.VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!
+  );
+
+  let totalSent = 0;
+  for (const notification of notifications) {
+    const payload = JSON.stringify({
+      title: notification.title,
+      body: notification.body,
+      type: notification.type,
+      tag: notification.type,
+    });
+
+    const results = await Promise.allSettled(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      subs.map((sub: any) => webpush.sendNotification(sub.subscription, payload))
+    );
+    totalSent += results.filter((r) => r.status === "fulfilled").length;
+  }
+
+  return NextResponse.json({
+    alerts: notifications.length,
+    notifications: notifications.map((n) => n.type),
+    sent: totalSent,
+  });
+}

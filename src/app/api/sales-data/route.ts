@@ -15,25 +15,26 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Fetch product mappings
-  const { data: mappings } = await supabase
+  // Fetch product mappings (filter active in JS — .eq("active", true) returns 0 rows on Vercel)
+  const { data: allMappings } = await supabase
     .from("sku_mappings")
-    .select("external_id, source, product_id, unit_multiplier")
-    .eq("active", true);
+    .select("external_id, source, product_id, unit_multiplier, active");
 
   const mappingLookup = new Map<string, { product_id: string; multiplier: number }>();
-  for (const m of mappings || []) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const m of (allMappings || []).filter((m: any) => m.active)) {
     mappingLookup.set(`${m.external_id}::${m.source}`, {
       product_id: m.product_id,
       multiplier: m.unit_multiplier || 1,
     });
   }
 
-  // Fetch products
-  const { data: products } = await supabase
+  // Fetch products (filter active in JS — .eq("active", true) returns 0 rows on Vercel)
+  const { data: allProducts_raw } = await supabase
     .from("products")
-    .select("id, quickbooks_name, sku, image_url, item_type, product_category, bundle_id, bundle_quantity, unit_cost")
-    .eq("active", true);
+    .select("id, quickbooks_name, sku, image_url, item_type, product_category, bundle_id, bundle_quantity, unit_cost, active");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const products = (allProducts_raw || []).filter((p: any) => p.active);
 
   // Build product map and calculate BOM costs
   const productMap = new Map<string, {

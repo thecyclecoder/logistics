@@ -1,30 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getCredentials } from "@/lib/credentials";
+import { getQBMappings } from "@/lib/qb-mappings";
 
 export const dynamic = "force-dynamic";
 
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
-
-const CHANNEL_CONFIG = {
-  amazon: {
-    customerRef: "40",     // Amazon Customer
-    depositAccount: "117", // Amazon Carried Balances
-    memo: "Amazon COGS - ",
-  },
-  shopify: {
-    customerRef: "30410",  // Shopify Customer
-    depositAccount: "589", // Shopify
-    memo: "Shopify COGS - ",
-  },
-} as const;
 
 export async function POST(request: NextRequest) {
   try {
   const body = await request.json();
   const { channel, month } = body as { channel: "amazon" | "shopify"; month: string };
 
-  if (!channel || !month || !CHANNEL_CONFIG[channel]) {
+  if (!channel || !month || !["amazon", "shopify"].includes(channel)) {
     return NextResponse.json({ error: "channel (amazon|shopify) and month (YYYY-MM) required" }, { status: 400 });
   }
 
@@ -192,19 +180,26 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  const config = CHANNEL_CONFIG[channel];
+  // Get configurable QB mappings
+  const mappingKeys = channel === "amazon"
+    ? ["amazon_customer", "amazon_deposit_account"]
+    : ["shopify_customer", "shopify_deposit_account"];
+  const qbMappings = await getQBMappings(mappingKeys);
+  const customerKey = channel === "amazon" ? "amazon_customer" : "shopify_customer";
+  const depositKey = channel === "amazon" ? "amazon_deposit_account" : "shopify_deposit_account";
 
   // Create Sales Receipt
   const channelCode = channel === "amazon" ? "AMZ" : "SHOP";
   const [yr, mo] = month.split("-");
   const docNumber = `${channelCode}-${mo}-${yr}`;
+  const memo = channel === "amazon" ? "Amazon COGS - " : "Shopify COGS - ";
 
   const receiptBody = {
     DocNumber: docNumber,
     TxnDate: txnDate,
-    CustomerRef: { value: config.customerRef },
-    DepositToAccountRef: { value: config.depositAccount },
-    PrivateNote: config.memo + month,
+    CustomerRef: { value: qbMappings[customerKey].qb_id },
+    DepositToAccountRef: { value: qbMappings[depositKey].qb_id },
+    PrivateNote: memo + month,
     Line: lines,
   };
 

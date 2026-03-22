@@ -58,10 +58,12 @@ export async function GET() {
     const data = await res.json();
 
     // Also get current product mappings
-    const { data: products } = await supabase
+    // Filter active in JS — .eq("active", true) returns 0 rows on Vercel
+    const { data: allProducts } = await supabase
       .from("products")
-      .select("id, quickbooks_name, revenue_account_id, revenue_account_name, item_type, product_category, bundle_id")
-      .eq("active", true);
+      .select("id, quickbooks_name, revenue_account_id, revenue_account_name, item_type, product_category, bundle_id, active");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const products = (allProducts || []).filter((p: any) => p.active);
 
     const accounts = (data.QueryResponse?.Account || [])
       .filter((a: { AccountSubType: string }) =>

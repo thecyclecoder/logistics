@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getCredentials } from "@/lib/credentials";
+import { getQBMapping } from "@/lib/qb-mappings";
 
 export const dynamic = "force-dynamic";
 
 const QB_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const SHRINKAGE_ACCOUNT_ID = "175"; // Product Costs:Inventory Shrinkage
 
 interface StepResult {
   step: number;
@@ -127,8 +126,9 @@ export async function POST(request: NextRequest) {
     // ============ STEP 2: Inventory Adjustment ============
     
     try {
-      // Get shrinkage account
-      const shrinkageAcctId = SHRINKAGE_ACCOUNT_ID;
+      // Get shrinkage account from configurable mappings
+      const shrinkageMapping = await getQBMapping("shrinkage_account");
+      const shrinkageAcctId = shrinkageMapping.qb_id;
 
       // Get inventory audit data to find variances
       const auditRes = await fetch(`${request.nextUrl.origin}/api/inventory-audit`, {

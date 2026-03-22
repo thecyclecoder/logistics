@@ -14,22 +14,23 @@ export default function PushPrompt() {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
-    // Check if already subscribed in DB (not browser cache)
-    fetch("/api/push/check", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.subscribed) {
-          // Already subscribed — re-subscribe silently to keep endpoint fresh
-          if ("Notification" in window && Notification.permission === "granted") {
-            import("@/lib/push").then(({ subscribeToPush }) => {
-              subscribeToPush().catch(() => {});
-            });
-          }
-        } else {
-          setShowPrompt(true);
-        }
-      })
-      .catch(() => setShowPrompt(true));
+    // Check if THIS device already has notification permission
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      // PWA not fully set up yet — show prompt with instructions
+      setShowPrompt(true);
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      // Already granted — silently re-subscribe to keep endpoint fresh
+      import("@/lib/push").then(({ subscribeToPush }) => {
+        subscribeToPush().catch(() => {});
+      });
+    } else if (Notification.permission === "default") {
+      // Not yet asked — show prompt
+      setShowPrompt(true);
+    }
+    // If "denied", don't show prompt (user explicitly blocked)
   }, []);
 
   const handleEnable = async () => {

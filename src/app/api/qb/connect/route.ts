@@ -7,7 +7,7 @@ const QB_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 
 export async function GET() {
   const creds = await getCredentials("quickbooks");
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://shoptics.ai";
 
   const params = new URLSearchParams({
     client_id: creds.client_id,

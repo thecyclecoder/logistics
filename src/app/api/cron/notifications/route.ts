@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
   const notifications: Array<{ type: string; title: string; body: string }> = [];
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://shoptics.ai";
 
   // 1. Low stock (< 3 months runway)
   try {

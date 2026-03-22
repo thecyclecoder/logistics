@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   }
 
   const creds = await getCredentials("quickbooks");
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://shoptics.ai";
   const basicAuth = Buffer.from(
     `${creds.client_id}:${creds.client_secret}`
   ).toString("base64");

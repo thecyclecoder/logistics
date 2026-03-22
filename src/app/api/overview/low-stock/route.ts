@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://logistics-beige-seven.vercel.app";
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://shoptics.ai";
 
     // Get inventory audit data
     const auditRes = await fetch(`${baseUrl}/api/inventory-audit`, {

@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
           const qbQty = postQbByProduct.get(comp.product_id);
           if (qbQty === undefined) continue;
           const actual = comp.actual_total;
-          const diff = actual - qbQty;
+          const diff = Math.round((actual - qbQty) * 100) / 100; // avoid floating point noise
           if (diff !== 0) {
             variances.push({ name: comp.name, variance: diff });
             totalVariance += Math.abs(diff);
@@ -330,7 +330,7 @@ export async function POST(request: NextRequest) {
         const qbQty = postQbByProduct.get(item.product_id);
         if (qbQty === undefined) continue;
         const actual = item.total;
-        const diff = actual - qbQty;
+        const diff = Math.round((actual - qbQty) * 100) / 100;
         if (diff !== 0) {
           variances.push({ name: item.name, variance: diff });
           totalVariance += Math.abs(diff);

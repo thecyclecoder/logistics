@@ -147,8 +147,14 @@ export async function POST(request: NextRequest) {
       const adjLines: any[] = [];
 
       // BOM component variances
+      // Skip components that have no direct FBA/3PL mappings (standalone_fba=0 and
+      // standalone_tpl=0). Their QB is managed by Group item auto-expansion from sales
+      // receipts, and they may appear in multiple QB Groups we don't track. Manual
+      // inventory for these items is off-books (at co-manufacturers).
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
+          const hasDirectChannels = (comp.standalone_fba || 0) > 0 || (comp.standalone_tpl || 0) > 0;
+          if (!hasDirectChannels) continue; // Skip — QB managed by Group auto-expansion
           if (comp.variance !== 0) {
             const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", comp.product_id).single();
             if (prod) {
@@ -305,11 +311,13 @@ export async function POST(request: NextRequest) {
       const variances: Array<{ name: string; variance: number }> = [];
 
       // For FG with BOM: compare post-closing QB (component level) vs actual channel inventory
+      // Skip components with no direct FBA/3PL (same logic as Step 2)
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
+          const hasDirectChannels = (comp.standalone_fba || 0) > 0 || (comp.standalone_tpl || 0) > 0;
+          if (!hasDirectChannels) continue;
           const qbQty = postQbByProduct.get(comp.product_id);
           if (qbQty === undefined) continue;
-          // Actual = implied from FG channels + standalone component inventory
           const actual = comp.actual_total;
           const diff = actual - qbQty;
           if (diff !== 0) {
@@ -332,22 +340,18 @@ export async function POST(request: NextRequest) {
       }
 
       const passed = totalVariance === 0;
-      // Small variances can occur due to 3PL inventory changes between steps (committed orders, etc.)
-      const acceptable = variances.every((v) => Math.abs(v.variance) <= 100);
       await supabase.from("month_end_closings").update({
-        variance_check_passed: passed || acceptable,
+        variance_check_passed: passed,
         variance_details: variances.length > 0 ? variances : null,
       }).eq("id", closingId);
 
       steps.push({
         step: 6,
         name: "Variance Check",
-        status: passed ? "success" : acceptable ? "success" : "error",
+        status: passed ? "success" : "error",
         message: passed
           ? "All variances are zero — QB matches channel inventory!"
-          : acceptable
-            ? `Minor variances on ${variances.length} items (total: ${totalVariance}) — within tolerance, likely 3PL timing`
-            : `${variances.length} items still have variance (total: ${totalVariance})`,
+          : `${variances.length} items still have variance (total: ${totalVariance})`,
         details: variances.length > 0 ? variances : undefined,
       });
     } catch (err) {

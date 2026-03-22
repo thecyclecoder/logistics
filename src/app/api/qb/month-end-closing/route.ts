@@ -139,22 +139,19 @@ export async function POST(request: NextRequest) {
       });
       const auditData = await auditRes.json();
 
-      // Build adjustment lines from BOM components and standalone FG
-      // Uses the audit variance: actual - (QB - sales). This is correct because
-      // the sales receipts (Steps 3/4) will also subtract sales from QB, and the
-      // variance formula already accounts for that expected burn.
+      // Build adjustment lines from BOM components and standalone FG.
+      // The audit now computes component variance using total burn across ALL parent
+      // Groups, so the variance is correct even for multi-parent components.
+      // Deduplicate by product_id since the same component may appear under multiple parents.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const adjLines: any[] = [];
+      const adjustedComponents = new Set<string>();
 
-      // BOM component variances
-      // Skip components that have no direct FBA/3PL mappings (standalone_fba=0 and
-      // standalone_tpl=0). Their QB is managed by Group item auto-expansion from sales
-      // receipts, and they may appear in multiple QB Groups we don't track. Manual
-      // inventory for these items is off-books (at co-manufacturers).
+      // BOM component variances (deduplicated)
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
-          const hasDirectChannels = (comp.standalone_fba || 0) > 0 || (comp.standalone_tpl || 0) > 0;
-          if (!hasDirectChannels) continue; // Skip — QB managed by Group auto-expansion
+          if (adjustedComponents.has(comp.product_id)) continue; // Already handled via another parent
+          adjustedComponents.add(comp.product_id);
           if (comp.variance !== 0) {
             const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", comp.product_id).single();
             if (prod) {
@@ -311,11 +308,12 @@ export async function POST(request: NextRequest) {
       const variances: Array<{ name: string; variance: number }> = [];
 
       // For FG with BOM: compare post-closing QB (component level) vs actual channel inventory
-      // Skip components with no direct FBA/3PL (same logic as Step 2)
+      // Deduplicate by product_id since multi-parent components appear under multiple FGs
+      const checkedComponents = new Set<string>();
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
-          const hasDirectChannels = (comp.standalone_fba || 0) > 0 || (comp.standalone_tpl || 0) > 0;
-          if (!hasDirectChannels) continue;
+          if (checkedComponents.has(comp.product_id)) continue;
+          checkedComponents.add(comp.product_id);
           const qbQty = postQbByProduct.get(comp.product_id);
           if (qbQty === undefined) continue;
           const actual = comp.actual_total;

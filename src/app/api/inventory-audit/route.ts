@@ -12,6 +12,11 @@ export async function GET() {
     .select("id, quickbooks_name, sku, image_url, item_type, product_category, bundle_id, bundle_quantity, unit_cost")
     .eq("active", true);
 
+  // 1b. BOM relationships (multi-parent support)
+  const { data: bomRows } = await supabase
+    .from("product_bom")
+    .select("parent_id, component_id, quantity");
+
   // 2. SKU Mappings
   const { data: mappings } = await supabase
     .from("sku_mappings")
@@ -127,6 +132,25 @@ export async function GET() {
     productById.set(p.id, { id: p.id, name: p.quickbooks_name, sku: p.sku, image_url: p.image_url, item_type: p.item_type, product_category: p.product_category, bundle_id: p.bundle_id, bundle_quantity: p.bundle_quantity });
   }
 
+  // Build BOM indexes from product_bom table (multi-parent support)
+  // parentToComponents: parent_id → [{component_id, quantity}]
+  // componentToParents: component_id → [{parent_id, quantity}]
+  const parentToComponents = new Map<string, Array<{ component_id: string; quantity: number }>>();
+  const componentToParents = new Map<string, Array<{ parent_id: string; quantity: number }>>();
+  const componentIds = new Set<string>();
+
+  for (const row of bomRows || []) {
+    const pList = parentToComponents.get(row.parent_id) || [];
+    pList.push({ component_id: row.component_id, quantity: Number(row.quantity) });
+    parentToComponents.set(row.parent_id, pList);
+
+    const cList = componentToParents.get(row.component_id) || [];
+    cList.push({ parent_id: row.parent_id, quantity: Number(row.quantity) });
+    componentToParents.set(row.component_id, cList);
+
+    componentIds.add(row.component_id);
+  }
+
   const mappingsByProduct = new Map<string, Array<{ external_id: string; source: string; multiplier: number }>>();
   for (const m of mappings || []) {
     const list = mappingsByProduct.get(m.product_id) || [];
@@ -161,19 +185,38 @@ export async function GET() {
     return { amazon_sold: amzSold, shopify_sold: shopSold, total_sold: amzSold + shopSold };
   }
 
+  // Pre-compute total component burn across ALL parent Groups
+  // For each component, sum (parent_sales × bom_qty) across all parents
+  const componentTotalBurn = new Map<string, { amazon_sold: number; shopify_sold: number; total_sold: number }>();
+  for (const [compId, parents] of Array.from(componentToParents)) {
+    let totalAmz = 0, totalShop = 0;
+    for (const { parent_id, quantity } of parents) {
+      const parentBurn = getSalesBurn(parent_id);
+      totalAmz += parentBurn.amazon_sold * quantity;
+      totalShop += parentBurn.shopify_sold * quantity;
+    }
+    componentTotalBurn.set(compId, { amazon_sold: totalAmz, shopify_sold: totalShop, total_sold: totalAmz + totalShop });
+  }
+
+  // Pre-compute total implied inventory for each component across ALL parents
+  const componentTotalImplied = new Map<string, { fba: number; fba_transit: number; tpl: number; manual: number; total: number }>();
+  for (const [compId, parents] of Array.from(componentToParents)) {
+    let totalFba = 0, totalTransit = 0, totalTpl = 0, totalManual = 0;
+    for (const { parent_id, quantity } of parents) {
+      const parentInv = getChannelInventory(parent_id);
+      totalFba += parentInv.fba * quantity;
+      totalTransit += parentInv.fba_transit * quantity;
+      totalTpl += parentInv.tpl * quantity;
+      totalManual += parentInv.manual * quantity;
+    }
+    const total = totalFba + totalTransit + totalTpl + totalManual;
+    componentTotalImplied.set(compId, { fba: totalFba, fba_transit: totalTransit, tpl: totalTpl, manual: totalManual, total });
+  }
+
   // Classify
   const bundles: ProductInfo[] = [];
-  const bomComponents = new Map<string, ProductInfo[]>();
-  const componentIds = new Set<string>();
-
   for (const p of Array.from(productById.values())) {
-    if (p.item_type === "bundle") { bundles.push(p); }
-    else if (p.bundle_id) {
-      componentIds.add(p.id);
-      const list = bomComponents.get(p.bundle_id) || [];
-      list.push(p);
-      bomComponents.set(p.bundle_id, list);
-    }
+    if (p.item_type === "bundle") bundles.push(p);
   }
 
   const standaloneFinished: ProductInfo[] = [];
@@ -188,53 +231,52 @@ export async function GET() {
   const finishedGoodsWithBOM = bundles.map((bundle) => {
     const inv = getChannelInventory(bundle.id);
     const burn = getSalesBurn(bundle.id);
-    const components = bomComponents.get(bundle.id) || [];
+    const components = parentToComponents.get(bundle.id) || [];
 
     // QB Start comes FROM components UP to parent
-    // Parent QB Start = min(component_qty / bom_multiplier) across all components
-    // This gives us how many finished goods the components could make
     let qbStart = 0;
     if (components.length > 0) {
-      const componentStarts = components.map((comp) => {
-        const bomQty = comp.bundle_quantity || 1;
-        const compQb = qbInventory.get(comp.id) || 0;
-        return Math.floor(compQb / bomQty);
+      const componentStarts = components.map(({ component_id, quantity }) => {
+        const compQb = qbInventory.get(component_id) || 0;
+        return Math.floor(compQb / quantity);
       });
       qbStart = Math.min(...componentStarts);
     }
 
     const expected = qbStart - burn.total_sold;
 
-    const bomItems = components.map((comp) => {
-      const bomQty = comp.bundle_quantity || 1;
+    const bomItems = components.map(({ component_id, quantity: bomQty }) => {
+      const comp = productById.get(component_id);
+      if (!comp) return null;
 
-      // QB Start: actual QB value for this component (not derived from parent)
+      // QB Start: actual QB value for this component
       const compQbStart = qbInventory.get(comp.id) || 0;
-      // Sales burn: parent sales × BOM qty (sales consume components)
-      const compAmzSold = burn.amazon_sold * bomQty;
-      const compShopSold = burn.shopify_sold * bomQty;
-      const compTotalSold = burn.total_sold * bomQty;
-      const compExpected = compQbStart - compTotalSold;
 
-      // Current inventory: implied from parent FG + standalone component inventory
+      // Sales burn: use TOTAL burn across ALL parent Groups (not just this parent)
+      const totalBurn = componentTotalBurn.get(comp.id) || { amazon_sold: 0, shopify_sold: 0, total_sold: 0 };
+      const compExpected = compQbStart - totalBurn.total_sold;
+
+      // Implied inventory from THIS parent only (for display)
       const impliedFba = inv.fba * bomQty;
       const impliedFbaTransit = inv.fba_transit * bomQty;
       const impliedTpl = inv.tpl * bomQty;
       const impliedManual = inv.manual * bomQty;
       const impliedTotal = inv.total * bomQty;
 
-      const compInv = getChannelInventory(comp.id);
+      // Total implied across ALL parents (for variance calculation)
+      const totalImplied = componentTotalImplied.get(comp.id) || { fba: 0, fba_transit: 0, tpl: 0, manual: 0, total: 0 };
 
-      const actualTotal = impliedTotal + compInv.total;
+      const compInv = getChannelInventory(comp.id);
+      const actualTotal = totalImplied.total + compInv.total;
       const compVariance = actualTotal - compExpected;
 
       return {
         product_id: comp.id, name: comp.name, sku: comp.sku, image_url: comp.image_url,
         bom_quantity: bomQty,
         qb_starting: compQbStart,
-        amazon_sold: compAmzSold,
-        shopify_sold: compShopSold,
-        total_sold: compTotalSold,
+        amazon_sold: totalBurn.amazon_sold,
+        shopify_sold: totalBurn.shopify_sold,
+        total_sold: totalBurn.total_sold,
         expected_remaining: compExpected,
         implied_fba: impliedFba,
         implied_fba_transit: impliedFbaTransit,
@@ -249,7 +291,7 @@ export async function GET() {
         actual_total: actualTotal,
         variance: compVariance,
       };
-    });
+    }).filter(Boolean);
 
     return {
       product_id: bundle.id, name: bundle.name, sku: bundle.sku, image_url: bundle.image_url,
@@ -284,7 +326,7 @@ export async function GET() {
   });
 
   const response = NextResponse.json({
-    finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b.actual_total > 0)),
+    finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b !== null && (b as { actual_total: number }).actual_total > 0)),
     standalone_finished_goods: standaloneItems.filter((i) => i.total > 0 || i.qb_starting > 0),
     unattached_components: unattachedItems.filter((i) => i.total > 0),
     meta: {

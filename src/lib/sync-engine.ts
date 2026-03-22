@@ -167,9 +167,10 @@ export async function syncQBProducts(): Promise<SyncResult> {
 
       if (!bundleProduct) continue;
 
-      // Link component items to this bundle
+      // Link component items to this bundle (legacy fields + product_bom table)
       const lines = group.ItemGroupDetail?.ItemGroupLine || [];
       for (const line of lines) {
+        // Update legacy bundle_id (last-write-wins for multi-parent components)
         await supabase
           .from("products")
           .update({
@@ -177,6 +178,19 @@ export async function syncQBProducts(): Promise<SyncResult> {
             bundle_quantity: line.Qty,
           })
           .eq("quickbooks_id", line.ItemRef.value);
+
+        // Upsert into product_bom for multi-parent support
+        const { data: compProduct } = await supabase
+          .from("products")
+          .select("id")
+          .eq("quickbooks_id", line.ItemRef.value)
+          .single();
+        if (compProduct) {
+          await supabase.from("product_bom").upsert(
+            { parent_id: bundleProduct.id, component_id: compProduct.id, quantity: line.Qty },
+            { onConflict: "parent_id,component_id" }
+          );
+        }
       }
 
       count++;

@@ -56,14 +56,20 @@ export async function GET() {
     }
   }
 
-  // 5. Manual inventory (select all, filter in JS — .eq("active", true) has a type issue)
-  const { data: manualEntriesAll } = await supabase
-    .from("manual_inventory")
-    .select("product_id, quantity, location, note, active");
-
-  const manualEntries = (manualEntriesAll || []).filter(
-    (m: { active: boolean }) => m.active
+  // 5. Manual inventory — use direct REST call to bypass any client caching
+  const manualRes = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/manual_inventory?select=product_id,quantity,location,note,active`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+      cache: "no-store",
+    }
   );
+  const manualEntriesAll = await manualRes.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const manualEntries = (manualEntriesAll || []).filter((m: any) => m.active);
 
   const manualByProduct = new Map<string, Array<{ quantity: number; location: string; note: string | null }>>();
   for (const m of manualEntries || []) {

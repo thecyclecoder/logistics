@@ -37,6 +37,14 @@ export function createServiceClient() {
         },
         setAll() {},
       },
+      global: {
+        fetch: (url: string | URL | Request, init?: RequestInit) => {
+          return fetch(url, {
+            ...init,
+            cache: "no-store",
+          });
+        },
+      },
     }
   );
 }

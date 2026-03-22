@@ -11,7 +11,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-2">1. Introduction</h2>
             <p>
-              Superfoods Company (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) operates the Logistics inventory
+              Superfoods Company (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) operates the Shoptics inventory
               management application. This Privacy Policy explains how we collect, use, and
               protect information when you use our Application.
             </p>

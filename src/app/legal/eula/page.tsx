@@ -11,7 +11,7 @@ export default function EULAPage() {
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-2">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using the Logistics inventory management application
+              By accessing or using the Shoptics inventory management application
               (&quot;Application&quot;) operated by Superfoods Company, you agree to be bound by
               this End-User License Agreement (&quot;EULA&quot;). If you do not agree, do not use the
               Application.

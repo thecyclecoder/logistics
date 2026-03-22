@@ -28,8 +28,8 @@ function LoginForm() {
             <div className="h-14 w-14 bg-brand-600 rounded-xl flex items-center justify-center mb-4">
               <Package className="h-8 w-8 text-white" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Logistics</h1>
-            <p className="text-sm text-gray-500 mt-1">Inventory Management</p>
+            <h1 className="text-xl font-semibold text-gray-900">Shoptics</h1>
+            <p className="text-sm text-gray-500 mt-1">Inventory Intelligence</p>
           </div>
 
           {error && (

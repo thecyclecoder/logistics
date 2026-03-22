@@ -180,16 +180,44 @@ export async function GET() {
 
     const bomItems = components.map((comp) => {
       const bomQty = comp.bundle_quantity || 1;
-      const implied = inv.total * bomQty;
+
+      // Reconciliation pushed through BOM: parent values × BOM quantity
+      const compQbStart = qbStart * bomQty;
+      const compAmzSold = burn.amazon_sold * bomQty;
+      const compShopSold = burn.shopify_sold * bomQty;
+      const compTotalSold = burn.total_sold * bomQty;
+      const compExpected = compQbStart - compTotalSold;
+
+      // Current inventory: implied from parent FG + standalone component inventory
+      const impliedFba = inv.fba * bomQty;
+      const impliedTpl = inv.tpl * bomQty;
+      const impliedManual = inv.manual * bomQty;
+      const impliedTotal = inv.total * bomQty;
+
+      // Standalone = component's own channel inventory (held separately, not in FG)
       const compInv = getChannelInventory(comp.id);
-      const compQbStart = qbInventory.get(comp.id) || 0;
+
+      const actualTotal = impliedTotal + compInv.total;
+      const compVariance = actualTotal - compExpected;
+
       return {
         product_id: comp.id, name: comp.name, sku: comp.sku, image_url: comp.image_url,
-        bom_quantity: bomQty, implied_units: implied,
-        standalone_fba: compInv.fba, standalone_tpl: compInv.tpl,
-        standalone_manual: compInv.manual, standalone_total: compInv.total,
-        total_inventory: implied + compInv.total,
+        bom_quantity: bomQty,
         qb_starting: compQbStart,
+        amazon_sold: compAmzSold,
+        shopify_sold: compShopSold,
+        total_sold: compTotalSold,
+        expected_remaining: compExpected,
+        implied_fba: impliedFba,
+        implied_tpl: impliedTpl,
+        implied_manual: impliedManual,
+        implied_total: impliedTotal,
+        standalone_fba: compInv.fba,
+        standalone_tpl: compInv.tpl,
+        standalone_manual: compInv.manual,
+        standalone_total: compInv.total,
+        actual_total: actualTotal,
+        variance: compVariance,
       };
     });
 
@@ -226,7 +254,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b.total_inventory > 0)),
+    finished_goods_with_bom: finishedGoodsWithBOM.filter((fg) => fg.finished_good_units > 0 || fg.qb_starting > 0 || fg.bom_items.some((b) => b.actual_total > 0)),
     standalone_finished_goods: standaloneItems.filter((i) => i.total > 0 || i.qb_starting > 0),
     unattached_components: unattachedItems.filter((i) => i.total > 0),
     meta: {

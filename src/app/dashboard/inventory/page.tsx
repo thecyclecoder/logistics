@@ -5,9 +5,12 @@ import { RefreshCw, Plus, X, Search, MapPin, CheckCircle2, AlertTriangle, XCircl
 
 interface BomItem {
   product_id: string; name: string; sku: string | null; image_url: string | null;
-  bom_quantity: number; implied_units: number;
-  standalone_fba: number; standalone_tpl: number; standalone_manual: number;
-  standalone_total: number; total_inventory: number; qb_starting: number;
+  bom_quantity: number;
+  qb_starting: number; amazon_sold: number; shopify_sold: number;
+  total_sold: number; expected_remaining: number;
+  implied_fba: number; implied_tpl: number; implied_manual: number; implied_total: number;
+  standalone_fba: number; standalone_tpl: number; standalone_manual: number; standalone_total: number;
+  actual_total: number; variance: number;
 }
 
 interface FGWithBOM {
@@ -147,25 +150,39 @@ export default function InventoryPage() {
                       </tr>
                       {/* BOM component rows */}
                       {fg.bom_items.map((comp) => (
-                        <tr key={comp.product_id} className="border-b border-gray-50 bg-white">
+                        <tr key={comp.product_id} className="border-b border-gray-50 bg-white text-xs">
                           <td className="px-3 py-1.5"></td>
                           <td className="px-3 py-1.5 pl-12">
                             <div className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-                              <span className="text-gray-600 text-xs">{comp.name}</span>
-                              <span className="text-xs text-gray-400">×{comp.bom_quantity}</span>
+                              <div className="h-1.5 w-1.5 rounded-full bg-orange-300" />
+                              <span className="text-gray-600">{comp.name}</span>
+                              <span className="text-gray-400">×{comp.bom_quantity}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-400">{comp.qb_starting || "—"}</td>
-                          <td className="px-3 py-1.5"></td>
-                          <td className="px-3 py-1.5"></td>
-                          <td className="px-3 py-1.5 text-right text-xs text-brand-600">{comp.implied_units} in FG</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-amber-500">{comp.standalone_fba || "—"}</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-purple-500">{comp.standalone_tpl || "—"}</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-teal-500">{comp.standalone_manual || "—"}</td>
-                          <td className="px-3 py-1.5 text-right text-xs font-medium text-gray-700">{comp.total_inventory}</td>
-                          <td className="px-3 py-1.5"></td>
-                          <td className="px-3 py-1.5"></td>
+                          <td className="px-3 py-1.5 text-right text-gray-600">{comp.qb_starting || "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-amber-600">{comp.amazon_sold > 0 ? `-${comp.amazon_sold}` : "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-emerald-600">{comp.shopify_sold > 0 ? `-${comp.shopify_sold}` : "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-600">{comp.expected_remaining}</td>
+                          <td className="px-3 py-1.5 text-right text-amber-500">
+                            {comp.implied_fba > 0 || comp.standalone_fba > 0
+                              ? `${comp.implied_fba}${comp.standalone_fba > 0 ? ` +${comp.standalone_fba}` : ""}`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-purple-500">
+                            {comp.implied_tpl > 0 || comp.standalone_tpl > 0
+                              ? `${comp.implied_tpl}${comp.standalone_tpl > 0 ? ` +${comp.standalone_tpl}` : ""}`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-teal-500">
+                            {comp.implied_manual > 0 || comp.standalone_manual > 0
+                              ? `${comp.implied_manual}${comp.standalone_manual > 0 ? ` +${comp.standalone_manual}` : ""}`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium text-gray-700">{comp.actual_total}</td>
+                          <td className={`px-3 py-1.5 text-right font-medium ${comp.variance === 0 ? "text-green-600" : comp.variance > 0 ? "text-blue-600" : "text-red-600"}`}>
+                            {comp.variance > 0 ? "+" : ""}{comp.variance}
+                          </td>
+                          <td className="px-3 py-1.5"><VarianceIcon v={comp.variance} /></td>
                         </tr>
                       ))}
                     </>

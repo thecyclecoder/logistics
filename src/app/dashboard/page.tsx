@@ -1,20 +1,34 @@
-import { createClient } from "@/lib/supabase/server";
-import StatCard from "@/components/stat-card";
-import SyncButton from "@/components/sync-button";
-import RevenueChart from "@/components/revenue-chart";
-import UnmappedAlert from "@/components/unmapped-alert";
-import { Package, DollarSign, ShoppingCart, Boxes, AlertTriangle, Clock } from "lucide-react";
-import type { CronLog, CurrentInventory } from "@/lib/types/database";
+"use client";
 
-export const revalidate = 60;
+import { useEffect, useState } from "react";
+import { DollarSign, ShoppingCart, AlertTriangle, Clock, CalendarCheck, TrendingUp } from "lucide-react";
 
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
+interface LowStockItem {
+  name: string;
+  image_url: string | null;
+  current: number;
+  threshold: number;
+  burn_rate: number;
+  months_left: number;
+}
+
+interface CronLog {
+  id: string;
+  job_name: string;
+  status: string;
+  records_processed: number | null;
+  started_at: string;
+}
+
+interface Closing {
+  id: string;
+  closing_month: string;
+  status: string;
+  completed_at: string | null;
+}
+
+function fmt(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 }
 
 function timeAgo(date: string): string {
@@ -26,154 +40,185 @@ function timeAgo(date: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export default async function DashboardPage() {
-  const supabase = createClient();
+export default function DashboardPage() {
+  const [salesData, setSalesData] = useState<{ units: number; revenue: number; recurring_units: number } | null>(null);
+  const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
+  const [cronLogs, setCronLogs] = useState<CronLog[]>([]);
+  const [closings, setClosings] = useState<Closing[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch stats in parallel
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  useEffect(() => {
+    const now = new Date();
+    const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const today = now.toISOString().split("T")[0];
 
-  const [productsRes, salesRes, inventoryRes, cronRes] = await Promise.all([
-    supabase.from("products").select("id", { count: "exact" }).eq("active", true),
-    supabase.from("monthly_sales_summary").select("*").eq("period_month", currentMonth),
-    supabase.from("current_inventory").select("*"),
-    supabase
-      .from("cron_logs")
-      .select("*")
-      .order("started_at", { ascending: false })
-      .limit(10),
-  ]);
+    Promise.all([
+      // MTD sales
+      fetch(`/api/sales-data?start=${mtdStart}&end=${today}&channel=all`, { cache: "no-store" }).then((r) => r.json()),
+      // Low stock (from inventory audit + sales burn)
+      fetch("/api/overview/low-stock", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      // Cron logs
+      fetch("/api/overview/cron-logs", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      // Month-end closings
+      fetch("/api/qb/month-end-closing/history", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+    ]).then(([sales, stock, logs, closes]) => {
+      setSalesData(sales.totals || null);
+      if (Array.isArray(stock)) setLowStock(stock);
+      if (Array.isArray(logs)) setCronLogs(logs);
+      if (Array.isArray(closes)) setClosings(closes);
+      setLoading(false);
+    });
+  }, []);
 
-  const productCount = productsRes.count || 0;
-
-  const salesData = (salesRes.data || []) as { total_net: number; total_quantity: number }[];
-  const mtdRevenue = salesData.reduce((s, r) => s + Number(r.total_net), 0);
-  const mtdUnits = salesData.reduce((s, r) => s + Number(r.total_quantity), 0);
-
-  const inventory = (inventoryRes.data || []) as CurrentInventory[];
-  const totalInventory = inventory.reduce((s, r) => s + r.total, 0);
-  const lowStock = inventory.filter(
-    (i) => i.reorder_point > 0 && i.total < i.reorder_point && i.total > 0
-  );
-  const outOfStock = inventory.filter((i) => i.total === 0 && i.reorder_point > 0);
-
-  const cronLogs = (cronRes.data || []) as CronLog[];
+  const recurringPct = salesData && salesData.units > 0
+    ? ((salesData.recurring_units / salesData.units) * 100).toFixed(0)
+    : "0";
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Overview</h1>
-        <SyncButton />
-      </div>
-
-      {/* Unmapped SKU Alert */}
-      <UnmappedAlert />
+      <h1 className="text-2xl font-semibold text-gray-900">Overview</h1>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Products in QB" value={productCount} icon={Package} />
-        <StatCard title="MTD Revenue" value={formatCurrency(mtdRevenue)} icon={DollarSign} />
-        <StatCard title="MTD Units Sold" value={mtdUnits.toLocaleString()} icon={ShoppingCart} />
-        <StatCard title="Total Inventory" value={totalInventory.toLocaleString()} icon={Boxes} />
-      </div>
-
-      {/* Revenue Chart */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="mb-4 text-base font-semibold text-gray-900">Revenue (Last 6 Months)</h2>
-        <RevenueChart />
-      </div>
+      {salesData && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-500">MTD Revenue</p>
+              <DollarSign className="h-4 w-4 text-gray-400" />
+            </div>
+            <p className="mt-2 text-2xl font-semibold text-gray-900">{fmt(salesData.revenue)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-500">MTD Units Sold</p>
+              <ShoppingCart className="h-4 w-4 text-gray-400" />
+            </div>
+            <p className="mt-2 text-2xl font-semibold text-gray-900">{salesData.units.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-500">Recurring</p>
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </div>
+            <p className="mt-2 text-2xl font-semibold text-green-600">{salesData.recurring_units.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-green-600">{recurringPct}% of total</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-500">Low Stock Alerts</p>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+            </div>
+            <p className={`mt-2 text-2xl font-semibold ${lowStock.length > 0 ? "text-amber-600" : "text-green-600"}`}>
+              {loading ? "..." : lowStock.length}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Low Stock Alerts */}
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="h-4.5 w-4.5 text-amber-500" />
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
             <h2 className="text-base font-semibold text-gray-900">
-              Low Stock Alerts ({lowStock.length + outOfStock.length})
+              Low Stock Alerts ({lowStock.length})
             </h2>
           </div>
-          {lowStock.length === 0 && outOfStock.length === 0 ? (
-            <p className="text-sm text-gray-400">No alerts</p>
+          <p className="text-xs text-gray-400 mb-3">Products with less than 6 months of inventory based on 14-day burn rate</p>
+          {lowStock.length === 0 ? (
+            <p className="text-sm text-gray-400">{loading ? "Loading..." : "All products well stocked"}</p>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {outOfStock.map((item) => (
-                <div
-                  key={item.product_id}
-                  className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-red-800">
-                    {item.quickbooks_name}
-                  </span>
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                    Out of Stock
-                  </span>
-                </div>
-              ))}
-              {lowStock.map((item) => (
-                <div
-                  key={item.product_id}
-                  className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-amber-800">
-                    {item.quickbooks_name}
-                  </span>
-                  <span className="text-xs text-amber-600">
-                    {item.total} / {item.reorder_point}
-                  </span>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {lowStock.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="" className="h-6 w-6 rounded object-contain border border-gray-100" />
+                    ) : null}
+                    <span className="text-sm font-medium text-amber-800 truncate max-w-[200px]">{item.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-amber-700 font-medium">
+                      {item.months_left.toFixed(1)} months left
+                    </span>
+                    <p className="text-xs text-amber-500">{item.current} on hand · {Math.round(item.burn_rate)}/mo burn</p>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Recent Sync Jobs */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="h-4.5 w-4.5 text-gray-400" />
-            <h2 className="text-base font-semibold text-gray-900">Recent Sync Jobs</h2>
-          </div>
-          {cronLogs.length === 0 ? (
-            <p className="text-sm text-gray-400">No sync jobs yet</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="pb-2 text-left font-medium text-gray-500">Job</th>
-                    <th className="pb-2 text-left font-medium text-gray-500">Status</th>
-                    <th className="pb-2 text-right font-medium text-gray-500">Records</th>
-                    <th className="pb-2 text-right font-medium text-gray-500">When</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cronLogs.map((log) => (
-                    <tr key={log.id}>
-                      <td className="py-2 font-medium text-gray-700">{log.job_name}</td>
-                      <td className="py-2">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                            log.status === "success"
-                              ? "bg-green-50 text-green-700"
-                              : log.status === "error"
-                                ? "bg-red-50 text-red-700"
-                                : "bg-blue-50 text-blue-700"
-                          }`}
-                        >
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="py-2 text-right text-gray-500">
-                        {log.records_processed ?? "-"}
-                      </td>
-                      <td className="py-2 text-right text-gray-500">
-                        {timeAgo(log.started_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Recent Sync Jobs + Month-End History */}
+        <div className="space-y-6">
+          {/* Sync Jobs */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Clock className="h-4 w-4 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-900">Recent Sync Jobs</h2>
             </div>
-          )}
+            {cronLogs.length === 0 ? (
+              <p className="text-sm text-gray-400">{loading ? "Loading..." : "No sync jobs yet"}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pb-2 text-left font-medium text-gray-500">Job</th>
+                      <th className="pb-2 text-left font-medium text-gray-500">Status</th>
+                      <th className="pb-2 text-right font-medium text-gray-500">Records</th>
+                      <th className="pb-2 text-right font-medium text-gray-500">When</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {cronLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td className="py-2 font-medium text-gray-700">{log.job_name}</td>
+                        <td className="py-2">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                            log.status === "success" ? "bg-green-50 text-green-700"
+                              : log.status === "error" ? "bg-red-50 text-red-700"
+                                : "bg-blue-50 text-blue-700"
+                          }`}>{log.status}</span>
+                        </td>
+                        <td className="py-2 text-right text-gray-500">{log.records_processed ?? "-"}</td>
+                        <td className="py-2 text-right text-gray-500">{timeAgo(log.started_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Month-End Closing History */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <CalendarCheck className="h-4 w-4 text-gray-400" />
+              <h2 className="text-base font-semibold text-gray-900">Month-End Closings</h2>
+            </div>
+            {closings.length === 0 ? (
+              <p className="text-sm text-gray-400">{loading ? "Loading..." : "No closings yet"}</p>
+            ) : (
+              <div className="space-y-2">
+                {closings.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${
+                        c.status === "completed" ? "bg-green-500"
+                          : c.status === "error" ? "bg-red-500"
+                            : "bg-amber-500"
+                      }`} />
+                      <span className="text-sm font-medium text-gray-700">{c.closing_month}</span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {c.completed_at ? new Date(c.completed_at).toLocaleDateString() : c.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

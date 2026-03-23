@@ -29,6 +29,17 @@ interface TplProduct {
   name: string;
   image_url: string | null;
   label: string | null;
+  multiplier: number;
+}
+
+interface FbaInventory {
+  fulfillable: number;
+  inbound: number;
+}
+
+interface TplInventory {
+  available: number;
+  on_hand: number;
 }
 
 interface KitMapping {
@@ -197,6 +208,8 @@ export default function ReplenishmentMappingPage() {
   const [mappings, setMappings] = useState<KitMapping[]>([]);
   const [amazonProducts, setAmazonProducts] = useState<AmazonProduct[]>([]);
   const [tplProducts, setTplProducts] = useState<TplProduct[]>([]);
+  const [fbaInventory, setFbaInventory] = useState<Record<string, FbaInventory>>({});
+  const [tplInventory, setTplInventory] = useState<Record<string, TplInventory>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +229,8 @@ export default function ReplenishmentMappingPage() {
       setMappings(data.mappings || []);
       setAmazonProducts(data.amazon_products || []);
       setTplProducts(data.tpl_products || []);
+      setFbaInventory(data.fba_inventory || {});
+      setTplInventory(data.tpl_inventory || {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load mappings");
     } finally {
@@ -415,66 +430,25 @@ export default function ReplenishmentMappingPage() {
 
       {/* Existing mappings */}
       {mappings.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {mappings.map((mapping) => {
             const product = getProductForAsin(mapping.asin);
             const tplProduct = getTplProduct(mapping.amplifier_kit_sku);
+            const fba = fbaInventory[mapping.asin];
+            const tpl = tplInventory[mapping.amplifier_kit_sku];
 
             return (
               <div
                 key={mapping.id}
-                className="rounded-xl border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors"
+                className="rounded-xl border border-gray-200 bg-white overflow-hidden hover:border-gray-300 transition-colors"
               >
-                <div className="flex items-center gap-4">
-                  {/* Amazon product side */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {product?.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt=""
-                        className="h-12 w-12 rounded-lg object-contain border border-gray-100 flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                        <Package className="h-5 w-5 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {product?.name || mapping.asin}
-                      </p>
-                      <p className="text-xs text-gray-400">{mapping.asin}</p>
-                    </div>
+                {/* Card header with actions */}
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4 text-brand-500" />
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Kit Mapping</span>
                   </div>
-
-                  {/* Link indicator */}
-                  <div className="flex-shrink-0 px-2">
-                    <Link2 className="h-5 w-5 text-brand-400" />
-                  </div>
-
-                  {/* 3PL kit side */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {tplProduct?.image_url ? (
-                      <img
-                        src={tplProduct.image_url}
-                        alt=""
-                        className="h-12 w-12 rounded-lg object-contain border border-gray-100 flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                        <Package className="h-5 w-5 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {tplProduct?.name || mapping.amplifier_kit_sku}
-                      </p>
-                      <p className="text-xs text-gray-400">{mapping.amplifier_kit_sku}</p>
-                    </div>
-                  </div>
-
-                  {/* Transparency badge + delete */}
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleToggleTransparency(mapping)}
                       className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -482,14 +456,9 @@ export default function ReplenishmentMappingPage() {
                           ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
                           : "bg-gray-100 text-gray-400 hover:bg-gray-200"
                       }`}
-                      title={
-                        mapping.transparency_enrolled
-                          ? "Transparency enrolled — click to disable"
-                          : "Not enrolled — click to enable"
-                      }
                     >
                       <ShieldCheck className="h-3.5 w-3.5" />
-                      {mapping.transparency_enrolled ? "Enrolled" : "No"}
+                      {mapping.transparency_enrolled ? "Transparency" : "No Transparency"}
                     </button>
                     <button
                       onClick={() => handleDelete(mapping.id)}
@@ -497,6 +466,101 @@ export default function ReplenishmentMappingPage() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
+                  </div>
+                </div>
+
+                {/* Two product cards — stacked on mobile, side by side on desktop */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-gray-100">
+                  {/* Amazon FBA side */}
+                  <div className="bg-white p-4">
+                    <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider mb-2">Amazon FBA</p>
+                    <div className="flex items-center gap-3">
+                      {product?.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt=""
+                          className="h-14 w-14 rounded-lg object-contain border border-gray-100 flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="h-14 w-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          <Package className="h-6 w-6 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 text-sm leading-tight">
+                          {product?.name || mapping.asin}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">{mapping.asin}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3 text-xs">
+                      {product && product.multiplier > 1 && (
+                        <span className="inline-flex items-center rounded-md bg-orange-50 px-2 py-0.5 font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
+                          {product.multiplier}-Pack
+                        </span>
+                      )}
+                      {product && product.multiplier === 1 && (
+                        <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-0.5 font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                          Single
+                        </span>
+                      )}
+                      {fba ? (
+                        <span className={`font-medium ${fba.fulfillable > 0 ? "text-green-600" : "text-red-500"}`}>
+                          {fba.fulfillable} fulfillable
+                          {fba.inbound > 0 && (
+                            <span className="text-blue-500 ml-1">+{fba.inbound} inbound</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">No snapshot</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amplifier 3PL side */}
+                  <div className="bg-white p-4">
+                    <p className="text-[10px] font-semibold text-purple-600 uppercase tracking-wider mb-2">Amplifier 3PL</p>
+                    <div className="flex items-center gap-3">
+                      {tplProduct?.image_url ? (
+                        <img
+                          src={tplProduct.image_url}
+                          alt=""
+                          className="h-14 w-14 rounded-lg object-contain border border-gray-100 flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="h-14 w-14 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          <Package className="h-6 w-6 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 text-sm leading-tight">
+                          {tplProduct?.name || mapping.amplifier_kit_sku}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">{mapping.amplifier_kit_sku}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3 text-xs">
+                      {tplProduct && tplProduct.multiplier > 1 && (
+                        <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-0.5 font-medium text-purple-700 ring-1 ring-inset ring-purple-200">
+                          {tplProduct.multiplier}-Pack
+                        </span>
+                      )}
+                      {tplProduct && tplProduct.multiplier === 1 && (
+                        <span className="inline-flex items-center rounded-md bg-gray-50 px-2 py-0.5 font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                          Single
+                        </span>
+                      )}
+                      {tpl ? (
+                        <span className={`font-medium ${tpl.available > 0 ? "text-green-600" : "text-red-500"}`}>
+                          {tpl.available} available
+                          {tpl.on_hand !== tpl.available && (
+                            <span className="text-gray-400 ml-1">({tpl.on_hand} on hand)</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">No snapshot</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

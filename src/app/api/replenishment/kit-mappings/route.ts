@@ -58,12 +58,15 @@ export async function GET() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tplProducts = tplMappings.map((m: any) => {
       const product = m.products;
+      const multiplier = m.unit_multiplier || 1;
+      const name = product?.quickbooks_name || m.external_id;
       return {
         sku: m.external_id,
         product_id: m.product_id,
-        name: product?.quickbooks_name || m.external_id,
+        name: multiplier > 1 ? `${name} ${multiplier}-Pack` : name,
         image_url: product?.image_url || null,
         label: m.label || null,
+        multiplier,
       };
     });
 
@@ -71,10 +74,56 @@ export async function GET() {
       a.name.localeCompare(b.name)
     );
 
+    // Get latest FBA inventory snapshot
+    const { data: latestFbaDate } = await supabase
+      .from("amazon_inventory_snapshots")
+      .select("snapshot_date")
+      .order("snapshot_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    const fbaInventory: Record<string, { fulfillable: number; inbound: number }> = {};
+    if (latestFbaDate) {
+      const { data: fbaSnaps } = await supabase
+        .from("amazon_inventory_snapshots")
+        .select("asin, quantity_fulfillable, quantity_inbound")
+        .eq("snapshot_date", latestFbaDate.snapshot_date);
+      for (const s of fbaSnaps || []) {
+        fbaInventory[s.asin] = {
+          fulfillable: s.quantity_fulfillable,
+          inbound: s.quantity_inbound || 0,
+        };
+      }
+    }
+
+    // Get latest 3PL inventory snapshot
+    const { data: latestTplDate } = await supabase
+      .from("tpl_inventory_snapshots")
+      .select("snapshot_date")
+      .order("snapshot_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    const tplInventory: Record<string, { available: number; on_hand: number }> = {};
+    if (latestTplDate) {
+      const { data: tplSnaps } = await supabase
+        .from("tpl_inventory_snapshots")
+        .select("sku, quantity_available, quantity_on_hand")
+        .eq("snapshot_date", latestTplDate.snapshot_date);
+      for (const s of tplSnaps || []) {
+        tplInventory[s.sku] = {
+          available: s.quantity_available,
+          on_hand: s.quantity_on_hand,
+        };
+      }
+    }
+
     return NextResponse.json({
       mappings: mappings || [],
       amazon_products: amazonProducts,
       tpl_products: tplProducts,
+      fba_inventory: fbaInventory,
+      tpl_inventory: tplInventory,
     });
   } catch (err) {
     return NextResponse.json(

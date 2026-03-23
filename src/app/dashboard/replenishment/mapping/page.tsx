@@ -368,6 +368,14 @@ export default function ReplenishmentMappingPage() {
   const getTplProduct = (sku: string) =>
     tplProducts.find((p) => p.sku === sku);
 
+  // Filter 3PL items to those sharing the same product_id as the selected ASIN
+  const getTplOptionsForAsin = (asin: string) => {
+    const amzProduct = amazonProducts.find((p) => p.asin === asin);
+    if (!amzProduct) return tplProducts;
+    const matched = tplProducts.filter((p) => p.product_id === amzProduct.product_id);
+    return matched.length > 0 ? matched : tplProducts;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -429,7 +437,7 @@ export default function ReplenishmentMappingPage() {
               <ProductSelect
                 items={amazonProducts.map((p) => ({ ...p, _value: p.asin, _subtext: p.asin }))}
                 value={newAsin}
-                onChange={setNewAsin}
+                onChange={(val) => { setNewAsin(val); setNewKitSku(""); }}
                 placeholder="Search Amazon products..."
                 excludeValues={mappedAsins}
               />
@@ -440,16 +448,16 @@ export default function ReplenishmentMappingPage() {
               <Link2 className="h-5 w-5 text-gray-300" />
             </div>
 
-            {/* 3PL kit select */}
+            {/* 3PL kit select — filtered to matching product */}
             <div className="lg:col-span-4">
               <label className="block text-xs font-medium text-gray-600 mb-1.5">
                 Amplifier Kit
               </label>
               <ProductSelect
-                items={tplProducts.map((p) => ({ ...p, _value: p.sku, _subtext: p.sku }))}
+                items={getTplOptionsForAsin(newAsin).map((p) => ({ ...p, _value: p.sku, _subtext: p.sku }))}
                 value={newKitSku}
                 onChange={setNewKitSku}
-                placeholder="Search 3PL kits..."
+                placeholder={newAsin ? "Matching 3PL kits..." : "Select Amazon product first..."}
               />
             </div>
 
@@ -566,7 +574,7 @@ export default function ReplenishmentMappingPage() {
                         <ProductSelect
                           items={amazonProducts.map((p) => ({ ...p, _value: p.asin, _subtext: p.asin }))}
                           value={editAsin}
-                          onChange={setEditAsin}
+                          onChange={(val) => { setEditAsin(val); setEditKitSku(""); }}
                           placeholder="Search Amazon products..."
                           excludeValues={mappedAsins}
                         />
@@ -576,10 +584,10 @@ export default function ReplenishmentMappingPage() {
                           Amplifier Kit
                         </label>
                         <ProductSelect
-                          items={tplProducts.map((p) => ({ ...p, _value: p.sku, _subtext: p.sku }))}
+                          items={getTplOptionsForAsin(editAsin).map((p) => ({ ...p, _value: p.sku, _subtext: p.sku }))}
                           value={editKitSku}
                           onChange={setEditKitSku}
-                          placeholder="Search 3PL kits..."
+                          placeholder={editAsin ? "Matching 3PL kits..." : "Select Amazon product first..."}
                         />
                       </div>
                     </div>

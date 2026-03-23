@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Map, PackageSearch, Activity, History } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Map, PackageSearch, Activity, History, ChevronDown } from "lucide-react";
 
 const subNavItems = [
   { href: "/dashboard/replenishment", label: "Inventory", icon: PackageSearch, exact: true },
@@ -17,6 +17,11 @@ export default function ReplenishmentLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const activeItem = subNavItems.find((item) =>
+    item.exact ? pathname === item.href : pathname.startsWith(item.href)
+  ) || subNavItems[0];
 
   return (
     <div className="space-y-6">
@@ -27,8 +32,24 @@ export default function ReplenishmentLayout({
         </p>
       </div>
 
-      {/* Sub-navigation */}
-      <div className="border-b border-gray-200">
+      {/* Mobile: select dropdown */}
+      <div className="lg:hidden relative">
+        <select
+          value={activeItem.href}
+          onChange={(e) => router.push(e.target.value)}
+          className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-4 py-2.5 pr-10 text-sm font-medium text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        >
+          {subNavItems.map((item) => (
+            <option key={item.href} value={item.href}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      </div>
+
+      {/* Desktop: tab bar */}
+      <div className="hidden lg:block border-b border-gray-200">
         <nav className="flex gap-6" aria-label="Replenishment">
           {subNavItems.map((item) => {
             const isActive = item.exact

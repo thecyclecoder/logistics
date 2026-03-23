@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Link2,
+  Pencil,
+  X,
 } from "lucide-react";
 
 interface AmazonProduct {
@@ -221,6 +223,12 @@ export default function ReplenishmentMappingPage() {
   const [newTransparency, setNewTransparency] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAsin, setEditAsin] = useState("");
+  const [editKitSku, setEditKitSku] = useState("");
+  const [editTransparency, setEditTransparency] = useState(false);
+
   const loadData = async () => {
     try {
       const res = await fetch("/api/replenishment/kit-mappings", { cache: "no-store" });
@@ -242,7 +250,7 @@ export default function ReplenishmentMappingPage() {
     loadData();
   }, []);
 
-  const mappedAsins = new Set(mappings.map((m) => m.asin));
+  const mappedAsins = new Set(mappings.filter((m) => m.id !== editingId).map((m) => m.asin));
 
   const handleAdd = async () => {
     if (!newAsin || !newKitSku) return;
@@ -307,6 +315,50 @@ export default function ReplenishmentMappingPage() {
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
+    }
+  };
+
+  const startEditing = (mapping: KitMapping) => {
+    setEditingId(mapping.id);
+    setEditAsin(mapping.asin);
+    setEditKitSku(mapping.amplifier_kit_sku);
+    setEditTransparency(mapping.transparency_enrolled);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditAsin("");
+    setEditKitSku("");
+    setEditTransparency(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editAsin || !editKitSku) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/replenishment/kit-mappings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          asin: editAsin,
+          amplifier_kit_sku: editKitSku,
+          transparency_enrolled: editTransparency,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMappings((prev) =>
+        prev.map((m) => (m.id === editingId ? data : m))
+      );
+      cancelEditing();
+      setSuccess("Mapping updated");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -432,42 +484,117 @@ export default function ReplenishmentMappingPage() {
       {mappings.length > 0 ? (
         <div className="space-y-4">
           {mappings.map((mapping) => {
-            const product = getProductForAsin(mapping.asin);
-            const tplProduct = getTplProduct(mapping.amplifier_kit_sku);
-            const fba = fbaInventory[mapping.asin];
-            const tpl = tplInventory[mapping.amplifier_kit_sku];
+            const isEditing = editingId === mapping.id;
+            const displayAsin = isEditing ? editAsin : mapping.asin;
+            const displaySku = isEditing ? editKitSku : mapping.amplifier_kit_sku;
+            const product = getProductForAsin(displayAsin);
+            const tplProduct = getTplProduct(displaySku);
+            const fba = fbaInventory[displayAsin];
+            const tpl = tplInventory[displaySku];
 
             return (
               <div
                 key={mapping.id}
-                className="rounded-xl border border-gray-200 bg-white overflow-hidden hover:border-gray-300 transition-colors"
+                className={`rounded-xl border bg-white overflow-hidden transition-colors ${
+                  isEditing ? "border-brand-300 ring-1 ring-brand-200" : "border-gray-200 hover:border-gray-300"
+                }`}
               >
                 {/* Card header with actions */}
                 <div className="flex items-center justify-between px-4 pt-3 pb-2">
                   <div className="flex items-center gap-2">
                     <Link2 className="h-4 w-4 text-brand-500" />
-                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Kit Mapping</span>
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                      {isEditing ? "Editing Mapping" : "Kit Mapping"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleTransparency(mapping)}
-                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                        mapping.transparency_enrolled
-                          ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                          : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-                      }`}
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      {mapping.transparency_enrolled ? "Transparency" : "No Transparency"}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(mapping.id)}
-                      className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={cancelEditing}
+                          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={!editAsin || !editKitSku || saving}
+                          className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                        >
+                          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleToggleTransparency(mapping)}
+                          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                            mapping.transparency_enrolled
+                              ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                          }`}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          {mapping.transparency_enrolled ? "Transparency" : "No Transparency"}
+                        </button>
+                        <button
+                          onClick={() => startEditing(mapping)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-brand-50 hover:text-brand-600 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(mapping.id)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {/* Edit mode: inline selects */}
+                {isEditing && (
+                  <div className="px-4 pb-3 space-y-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-orange-600 uppercase tracking-wider mb-1.5">
+                          Amazon Product
+                        </label>
+                        <ProductSelect
+                          items={amazonProducts.map((p) => ({ ...p, _value: p.asin, _subtext: p.asin }))}
+                          value={editAsin}
+                          onChange={setEditAsin}
+                          placeholder="Search Amazon products..."
+                          excludeValues={mappedAsins}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-purple-600 uppercase tracking-wider mb-1.5">
+                          Amplifier Kit
+                        </label>
+                        <ProductSelect
+                          items={tplProducts.map((p) => ({ ...p, _value: p.sku, _subtext: p.sku }))}
+                          value={editKitSku}
+                          onChange={setEditKitSku}
+                          placeholder="Search 3PL kits..."
+                        />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editTransparency}
+                        onChange={(e) => setEditTransparency(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <ShieldCheck className="h-4 w-4 text-gray-400" />
+                      <span className="text-xs text-gray-600">Transparency enrolled</span>
+                    </label>
+                  </div>
+                )}
 
                 {/* Two product cards — stacked on mobile, side by side on desktop */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-gray-100">
@@ -488,9 +615,9 @@ export default function ReplenishmentMappingPage() {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 text-sm leading-tight">
-                          {product?.name || mapping.asin}
+                          {product?.name || displayAsin}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">{mapping.asin}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{displayAsin}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-3 text-xs">
@@ -534,9 +661,9 @@ export default function ReplenishmentMappingPage() {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 text-sm leading-tight">
-                          {tplProduct?.name || mapping.amplifier_kit_sku}
+                          {tplProduct?.name || displaySku}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">{mapping.amplifier_kit_sku}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{displaySku}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-3 text-xs">

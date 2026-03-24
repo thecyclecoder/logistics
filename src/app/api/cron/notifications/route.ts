@@ -90,18 +90,18 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 4. New unmapped SKUs detected (filter dismissed in JS — .eq("dismissed", false) returns all rows on Vercel)
+  // 4. Unmapped SKUs — check external_skus with status=active and not mapped
   try {
-    const { data: unmappedAll } = await supabase
-      .from("unmapped_skus")
-      .select("id, external_id, source, dismissed");
+    const { data: externalAll } = await supabase
+      .from("external_skus")
+      .select("id, external_id, source, status, mapped");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unmapped = (unmappedAll || []).filter((u: any) => !u.dismissed);
+    const unmapped = (externalAll || []).filter((s: any) => s.status === "active" && !s.mapped);
 
-    if (unmapped && unmapped.length > 0) {
+    if (unmapped.length > 0) {
       notifications.push({
         type: "unmapped",
-        title: `${unmapped.length} Unmapped SKU${unmapped.length > 1 ? "s" : ""} Detected`,
+        title: `${unmapped.length} Unmapped SKU${unmapped.length > 1 ? "s" : ""} Need Review`,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         body: unmapped.slice(0, 3).map((u: any) => `${u.external_id} (${u.source})`).join(", ") +
           (unmapped.length > 3 ? ` +${unmapped.length - 3} more` : ""),

@@ -90,13 +90,22 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 4. Unmapped SKUs — check external_skus with status=active and not mapped
+  // 4. Unmapped SKUs — active external_skus without a corresponding sku_mapping
   try {
     const { data: externalAll } = await supabase
       .from("external_skus")
-      .select("id, external_id, source, status, mapped");
+      .select("id, external_id, source, status");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unmapped = (externalAll || []).filter((s: any) => s.status === "active" && !s.mapped);
+    const activeSkus = (externalAll || []).filter((s: any) => s.status === "active");
+
+    // Get all mapped external_ids to exclude
+    const { data: mappingsAll } = await supabase
+      .from("sku_mappings")
+      .select("external_id, active");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mappedIds = new Set((mappingsAll || []).filter((m: any) => m.active).map((m: any) => m.external_id));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unmapped = activeSkus.filter((s: any) => !mappedIds.has(s.external_id));
 
     if (unmapped.length > 0) {
       notifications.push({

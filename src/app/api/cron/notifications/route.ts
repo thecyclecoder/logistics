@@ -51,10 +51,10 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 3. Month-end closing reminder (from 1st of month, if previous month not closed)
+  // 3. Month-end closing reminder (only on the 1st of the month)
   try {
     const now = new Date();
-    if (now.getUTCDate() >= 1) {
+    if (now.getUTCDate() === 1) {
       const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const closingMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
 
@@ -73,6 +73,20 @@ export async function GET(request: NextRequest) {
           body: `Time to do your ${monthName} month-end closing!`,
         });
       }
+    }
+  } catch {}
+
+  // 3b. Gateway fee review reminder (on the 6th of the month)
+  try {
+    const now = new Date();
+    if (now.getUTCDate() === 6) {
+      const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const monthName = prevDate.toLocaleString("en-US", { month: "long" });
+      notifications.push({
+        type: "month_end",
+        title: "Review Transaction Fees",
+        body: `Braintree & gateway fee statements for ${monthName} should be available. Update your journal entry with actual fees.`,
+      });
     }
   } catch {}
 

@@ -90,12 +90,13 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 4. New unmapped SKUs detected
+  // 4. New unmapped SKUs detected (filter dismissed in JS — .eq("dismissed", false) returns all rows on Vercel)
   try {
-    const { data: unmapped } = await supabase
+    const { data: unmappedAll } = await supabase
       .from("unmapped_skus")
-      .select("id, external_id, source")
-      .eq("dismissed", false);
+      .select("id, external_id, source, dismissed");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unmapped = (unmappedAll || []).filter((u: any) => !u.dismissed);
 
     if (unmapped && unmapped.length > 0) {
       notifications.push({

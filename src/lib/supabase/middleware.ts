@@ -35,6 +35,8 @@ export async function updateSession(request: NextRequest) {
   if (
     pathname === "/login" ||
     pathname === "/restricted" ||
+    pathname === "/manifest.json" ||
+    pathname === "/sw.js" ||
     pathname === "/auth/callback" ||
     pathname.startsWith("/legal/") ||
     pathname.startsWith("/api/cron/") ||

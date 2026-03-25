@@ -19,6 +19,7 @@ import {
   X,
   ShoppingCart,
   Truck,
+  Users,
 } from "lucide-react";
 
 const navItems = [
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/dashboard/revenue-mapping", label: "Revenue Mapping", icon: BookOpen },
   { href: "/dashboard/month-end", label: "Month-End Closing", icon: CalendarCheck },
   { href: "/dashboard/connections", label: "Connections", icon: Plug },
+  { href: "/dashboard/team", label: "Team", icon: Users },
 ];
 
 export default function Sidebar({ email }: { email: string }) {

@@ -44,7 +44,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/qb/journal-entry") ||
     pathname.startsWith("/api/overview/") ||
     pathname === "/api/inventory-audit" ||
-    pathname === "/api/sales-data"
+    pathname === "/api/sales-data" ||
+    pathname.startsWith("/invite/")
   ) {
     return supabaseResponse;
   }
@@ -56,16 +57,56 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check admin emails
+  // Check access: ADMIN_EMAILS or accepted team member
+  const userEmail = user.email?.toLowerCase() || "";
   const adminEmails = (process.env.ADMIN_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  if (adminEmails.length > 0 && !adminEmails.includes(user.email?.toLowerCase() || "")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/restricted";
-    return NextResponse.redirect(url);
+  const isAdmin = adminEmails.includes(userEmail);
+
+  if (!isAdmin) {
+    // Check team_members table via direct REST (service role to bypass RLS)
+    const teamRes = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/team_members?email=eq.${encodeURIComponent(userEmail)}&status=eq.accepted&select=role`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        },
+        cache: "no-store",
+      }
+    );
+    const teamRows = await teamRes.json();
+    const teamMember = Array.isArray(teamRows) ? teamRows[0] : null;
+
+    if (!teamMember) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/restricted";
+      return NextResponse.redirect(url);
+    }
+
+    // Role-based route restrictions
+    const role = teamMember.role as string;
+    if (role === "view_only") {
+      // Block write operations
+      if (request.method !== "GET" && !pathname.startsWith("/api/push/")) {
+        return NextResponse.json({ error: "View-only access" }, { status: 403 });
+      }
+    }
+    if (role === "logistics") {
+      // Block admin-only routes
+      if (
+        pathname.startsWith("/dashboard/connections") ||
+        pathname.startsWith("/api/qb/month-end-closing") ||
+        pathname.startsWith("/api/qb/journal-entry") ||
+        pathname.startsWith("/dashboard/month-end") ||
+        pathname.startsWith("/api/team")
+      ) {
+        return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      }
+    }
   }
 
   return supabaseResponse;

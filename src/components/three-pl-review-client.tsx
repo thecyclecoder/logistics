@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Search, Check, Eye, EyeOff, Archive, Link2, AlertTriangle } from "lucide-react";
+import { Search, Check, Eye, EyeOff, Archive, Link2, AlertTriangle, Pencil, Trash2 } from "lucide-react";
 import QuickMapModal from "@/components/quick-map-modal";
 
 interface ExternalSku {
@@ -16,6 +16,14 @@ interface ExternalSku {
   mapped_to: string | null;
 }
 
+interface MappingDetail {
+  id: string;
+  external_id: string;
+  product_id: string;
+  product_name: string;
+  unit_multiplier: number;
+}
+
 type FilterKey = "unmapped" | "mapped" | "dismissed" | "discontinued" | "all";
 
 export default function ThreePLReviewClient() {
@@ -25,8 +33,33 @@ export default function ThreePLReviewClient() {
   const [filter, setFilter] = useState<FilterKey>("unmapped");
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [mappingSku, setMappingSku] = useState<ExternalSku | null>(null);
+  const [mappingDetails, setMappingDetails] = useState<Map<string, MappingDetail>>(new Map());
+  const [editingMapping, setEditingMapping] = useState<string | null>(null);
+  const [editMultiplier, setEditMultiplier] = useState(1);
   const [snapshotData, setSnapshotData] = useState<Map<string, { on_hand: number; committed: number; expected: number; snapshot_date: string }>>(new Map());
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
+
+  const loadMappings = () => {
+    fetch("/api/mappings?source=3pl")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const map = new Map<string, MappingDetail>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const m of data.filter((m: any) => m.active)) {
+            map.set(m.external_id, {
+              id: m.id,
+              external_id: m.external_id,
+              product_id: m.product_id,
+              product_name: m.products?.quickbooks_name || "Unknown",
+              unit_multiplier: m.unit_multiplier || 1,
+            });
+          }
+          setMappingDetails(map);
+        }
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     fetch("/api/external-skus?source=3pl&include_all=true")
@@ -35,6 +68,7 @@ export default function ThreePLReviewClient() {
         if (Array.isArray(data)) setSkus(data);
         setLoading(false);
       });
+    loadMappings();
   }, []);
 
   useEffect(() => {
@@ -88,6 +122,29 @@ export default function ThreePLReviewClient() {
   const handleMapped = (sku: ExternalSku, productName: string) => {
     setSkus((prev) => prev.map((s) => s.id === sku.id ? { ...s, mapped: true, mapped_to: productName } : s));
     setMappingSku(null);
+    loadMappings();
+  };
+
+  const handleDeleteMapping = async (mappingId: string, externalId: string) => {
+    if (!confirm("Remove this mapping?")) return;
+    await fetch(`/api/mappings/${mappingId}`, { method: "DELETE" });
+    setSkus((prev) => prev.map((s) => s.external_id === externalId ? { ...s, mapped: false, mapped_to: null } : s));
+    setMappingDetails((prev) => { const next = new Map(prev); next.delete(externalId); return next; });
+  };
+
+  const handleUpdateMultiplier = async (mappingId: string, externalId: string, newMultiplier: number) => {
+    await fetch(`/api/mappings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: mappingId, unit_multiplier: newMultiplier }),
+    });
+    setMappingDetails((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(externalId);
+      if (existing) next.set(externalId, { ...existing, unit_multiplier: newMultiplier });
+      return next;
+    });
+    setEditingMapping(null);
   };
 
   const unmappedCount = skus.filter((s) => !s.mapped && s.status === "active").length;
@@ -167,10 +224,18 @@ export default function ThreePLReviewClient() {
                   <td className="px-4 py-3 text-right text-gray-700">{snapshot?.expected ?? "—"}</td>
                   <td className="px-4 py-3">
                     {sku.mapped ? (
-                      <div>
-                        <span className="inline-flex rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">Mapped</span>
-                        <p className="text-xs text-gray-400 mt-0.5 truncate max-w-40">→ {sku.mapped_to}</p>
-                      </div>
+                      (() => {
+                        const detail = mappingDetails.get(sku.external_id);
+                        return (
+                          <div>
+                            <span className="inline-flex rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">Mapped</span>
+                            <p className="text-xs text-gray-700 mt-0.5 truncate max-w-48">→ {detail?.product_name || sku.mapped_to}</p>
+                            {detail && detail.unit_multiplier > 1 && (
+                              <span className="text-xs text-blue-600">{detail.unit_multiplier}-pack</span>
+                            )}
+                          </div>
+                        );
+                      })()
                     ) : sku.status === "discontinued" ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700"><Archive className="h-3 w-3" /> Discontinued</span>
                     ) : sku.status === "dismissed" ? (
@@ -187,7 +252,51 @@ export default function ThreePLReviewClient() {
                           <Eye className="h-3 w-3" /> Restore
                         </button>
                       ) : sku.mapped ? (
-                        <Check className="h-4 w-4 text-green-500" />
+                        (() => {
+                          const detail = mappingDetails.get(sku.external_id);
+                          return (
+                            <div className="flex items-center gap-1">
+                              {editingMapping === sku.external_id && detail ? (
+                                <div className="flex items-center gap-1">
+                                  <input type="number" min={1} value={editMultiplier}
+                                    onChange={(e) => setEditMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
+                                    className="w-14 rounded border border-gray-300 px-2 py-1 text-xs text-center" />
+                                  <span className="text-xs text-gray-400">-pack</span>
+                                  <button onClick={() => handleUpdateMultiplier(detail.id, sku.external_id, editMultiplier)}
+                                    className="rounded-lg bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700">
+                                    <Check className="h-3 w-3" />
+                                  </button>
+                                  <button onClick={() => setEditingMapping(null)}
+                                    className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50">
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button onClick={() => { setMappingSku(sku); }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                                    title="Change mapping">
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                  {detail && (
+                                    <>
+                                      <button onClick={() => { setEditMultiplier(detail.unit_multiplier); setEditingMapping(sku.external_id); }}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                                        title="Edit multiplier">
+                                        {detail.unit_multiplier}x
+                                      </button>
+                                      <button onClick={() => handleDeleteMapping(detail.id, sku.external_id)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                                        title="Remove mapping">
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()
                       ) : (
                         <>
                           <button onClick={() => setMappingSku(sku)}

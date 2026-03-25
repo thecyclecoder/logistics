@@ -83,6 +83,10 @@ export async function updateSession(request: NextRequest) {
     const teamMember = Array.isArray(teamRows) ? teamRows[0] : null;
 
     if (!teamMember) {
+      // API routes get JSON 403, pages get redirect
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
       const url = request.nextUrl.clone();
       url.pathname = "/restricted";
       return NextResponse.redirect(url);

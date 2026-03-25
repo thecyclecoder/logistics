@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { CheckCircle2, LogIn } from "lucide-react";
+import { CheckCircle2, LogIn, Loader2 } from "lucide-react";
 
 export default function InviteClient({
   token,
@@ -16,6 +16,27 @@ export default function InviteClient({
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoAccepting, setAutoAccepting] = useState(true);
+
+  // Auto-accept if user is already signed in with matching email
+  useEffect(() => {
+    const tryAutoAccept = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.email?.toLowerCase() === email.toLowerCase()) {
+        const res = await fetch("/api/team/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        if (res.ok) {
+          setAccepted(true);
+        }
+      }
+      setAutoAccepting(false);
+    };
+    tryAutoAccept();
+  }, [token, email]);
 
   const roleLabels: Record<string, string> = {
     admin: "Admin",
@@ -61,6 +82,17 @@ export default function InviteClient({
     }
     setAccepting(false);
   };
+
+  if (autoAccepting) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center max-w-md">
+          <Loader2 className="mx-auto h-8 w-8 text-brand-500 animate-spin mb-4" />
+          <p className="text-sm text-gray-500">Setting up your access...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (accepted) {
     return (

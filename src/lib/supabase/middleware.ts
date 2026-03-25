@@ -45,7 +45,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/overview/") ||
     pathname === "/api/inventory-audit" ||
     pathname === "/api/sales-data" ||
-    pathname.startsWith("/invite/")
+    pathname.startsWith("/invite/") ||
+    pathname === "/api/team/accept"
   ) {
     return supabaseResponse;
   }

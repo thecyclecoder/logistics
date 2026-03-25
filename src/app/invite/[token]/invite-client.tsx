@@ -32,10 +32,9 @@ export default function InviteClient({
 
     if (!user) {
       // Redirect to Google OAuth, then back here
-      const redirectUrl = `${window.location.origin}/invite/${token}`;
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectUrl)}` },
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/invite/${token}`)}` },
       });
       return;
     }

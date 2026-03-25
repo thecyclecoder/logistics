@@ -92,12 +92,12 @@ export default function TeamPage() {
     loadMembers();
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm("Revoke this team member's access?")) return;
+  const handleRemove = async (id: string) => {
+    if (!confirm("Remove this team member? They will lose all access.")) return;
     await fetch("/api/team", {
-      method: "PATCH",
+      method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: "revoked" }),
+      body: JSON.stringify({ id }),
     });
     loadMembers();
   };
@@ -216,25 +216,21 @@ export default function TeamPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {m.status !== "revoked" && (
-                      <>
-                        <select
-                          value={m.role}
-                          onChange={(e) => handleRoleChange(m.id, e.target.value)}
-                          className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-brand-500 focus:outline-none"
-                        >
-                          <option value="view_only">View Only</option>
-                          <option value="logistics">Logistics</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                        <button
-                          onClick={() => handleRevoke(m.id)}
-                          className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                        >
-                          Revoke
-                        </button>
-                      </>
-                    )}
+                    <select
+                      value={m.role}
+                      onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                      className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-brand-500 focus:outline-none"
+                    >
+                      <option value="view_only">View Only</option>
+                      <option value="logistics">Logistics</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <button
+                      onClick={() => handleRemove(m.id)}
+                      className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               );

@@ -108,3 +108,22 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }
+
+// DELETE: remove team member
+export async function DELETE(request: NextRequest) {
+  try {
+    const { id } = await request.json();
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+    const supabase = createServiceClient();
+    const { error } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("id", id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+}

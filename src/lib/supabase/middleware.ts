@@ -103,15 +103,24 @@ export async function updateSession(request: NextRequest) {
       }
     }
     if (role === "logistics") {
-      // Block admin-only routes
-      if (
-        pathname.startsWith("/dashboard/connections") ||
-        pathname.startsWith("/api/qb/month-end-closing") ||
-        pathname.startsWith("/api/qb/journal-entry") ||
-        pathname.startsWith("/dashboard/month-end") ||
-        pathname.startsWith("/api/team")
-      ) {
-        return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      // Block admin-only actions (not viewing connections/mappings)
+      const adminOnlyRoutes = [
+        "/api/qb/month-end-closing",
+        "/api/qb/journal-entry",
+        "/dashboard/month-end",
+        "/api/team",
+        "/api/qb/connect",
+        "/api/qb/disconnect",
+        "/api/shopify/connect",
+        "/api/connections/credentials",
+      ];
+      if (adminOnlyRoutes.some((r) => pathname.startsWith(r))) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+        }
+        const url = request.nextUrl.clone();
+        url.pathname = "/restricted";
+        return NextResponse.redirect(url);
       }
     }
   }

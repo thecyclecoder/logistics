@@ -296,6 +296,23 @@ Use the NEW v2024 API (v0 was deprecated Dec 2024). The workflow is sequential a
 - Auto-respond to Amazon follow-up questions
 - Amazon SP-API has Messaging API and Case Management endpoints
 
+### FBA Capacity Limits (IMPORTANT)
+Amazon does NOT expose FBA capacity/restock limits via the SP-API. No endpoint exists — open feature request since 2022, still unimplemented. Sellers must check Seller Central's "FBA Capacity Manager" manually.
+
+**Impact on replenishment flow:**
+- Cannot programmatically check remaining capacity before creating shipments
+- Amazon returns 400 error if shipment would exceed capacity (only way to know)
+- Must implement manual capacity entry: user inputs their limit from Seller Central
+- Store as snapshots to track fluctuations over time
+- Calculate remaining: `capacity_limit - current_fba_inventory - inbound_shipments`
+- Gate the replenishment UI: don't allow creating shipments that would exceed entered limit
+- Catch and surface 400 errors gracefully if limit is exceeded despite checks
+
+**What IS available via API:**
+- Current FBA inventory levels (`getInventorySummaries`)
+- Inbound/in-transit quantities
+- Shipment creation (will fail if over limit, but no pre-check)
+
 ### Key Constraints
 - Max 1500 SKUs per inbound plan
 - SPD parcels: <15kg each

@@ -251,14 +251,22 @@ export async function GET() {
     const burn = getSalesBurn(bundle.id);
     const components = parentToComponents.get(bundle.id) || [];
 
-    // QB Start comes FROM components UP to parent
+    // QB Start comes FROM the "-F" component (the rollup item) in the BOM
+    // Only components with SKUs ending in "-F" represent the actual finished product
+    // Other components (IFC boxes, etc.) should not drive the parent's QB starting count
     let qbStart = 0;
     if (components.length > 0) {
-      const componentStarts = components.map(({ component_id, quantity }) => {
-        const compQb = qbInventory.get(component_id) || 0;
-        return Math.floor(compQb / quantity);
+      const rollupComponents = components.filter(({ component_id }) => {
+        const comp = productById.get(component_id);
+        return comp?.sku?.endsWith("-F");
       });
-      qbStart = Math.min(...componentStarts);
+      if (rollupComponents.length > 0) {
+        const componentStarts = rollupComponents.map(({ component_id, quantity }) => {
+          const compQb = qbInventory.get(component_id) || 0;
+          return Math.floor(compQb / quantity);
+        });
+        qbStart = Math.min(...componentStarts);
+      }
     }
 
     const expected = qbStart - burn.total_sold;

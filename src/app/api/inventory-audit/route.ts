@@ -98,19 +98,37 @@ export async function GET() {
   }
   const qbSnapshotDate = qbSnapshots?.[0]?.snapshot_at?.split("T")[0] || null;
 
-  // 7. Sales since month start (for burn calculation)
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  // 7. Sales since last close (for burn calculation)
+  // Find the most recent completed month-end closing
+  const { data: lastClosing } = await supabase
+    .from("month_end_closings")
+    .select("closing_month")
+    .eq("status", "completed")
+    .order("closing_month", { ascending: false })
+    .limit(1)
+    .single();
+
+  let salesSince: string;
+  if (lastClosing) {
+    // Sales since the 1st of the month AFTER the last closed month
+    const [y, m] = lastClosing.closing_month.split("-").map(Number);
+    const nextMonth = m === 12 ? 1 : m + 1;
+    const nextYear = m === 12 ? y + 1 : y;
+    salesSince = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+  } else {
+    // No closing yet — March 2026 is the first close, so baseline is March 1
+    salesSince = "2026-03-01";
+  }
 
   const { data: amazonSales } = await supabase
     .from("amazon_sales_snapshots")
     .select("asin, units_shipped")
-    .gte("sale_date", monthStart);
+    .gte("sale_date", salesSince);
 
   const { data: shopifySales } = await supabase
     .from("shopify_sales_snapshots")
     .select("variant_id, units_sold")
-    .gte("sale_date", monthStart);
+    .gte("sale_date", salesSince);
 
   const amzSalesByAsin = new Map<string, number>();
   for (const r of amazonSales || []) {
@@ -331,7 +349,8 @@ export async function GET() {
     unattached_components: unattachedItems.filter((i) => i.total > 0),
     meta: {
       qb_snapshot_date: qbSnapshotDate,
-      sales_since: monthStart,
+      sales_since: salesSince,
+      last_closing_month: lastClosing?.closing_month || null,
       fba_snapshot_date: latestFbaDate?.snapshot_date || null,
       tpl_snapshot_date: latestTplDate?.snapshot_date || null,
       manual_entries_count: manualEntries.length,

@@ -52,28 +52,26 @@ export async function GET(request: NextRequest) {
     }
   } catch {}
 
-  // 3. Month-end closing reminder (only on the 1st of the month)
+  // 3. Month-end closing reminder (daily until previous month is closed)
   try {
     const now = new Date();
-    if (now.getUTCDate() === 1) {
-      const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const closingMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const closingMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
 
-      const { data: closings } = await supabase
-        .from("month_end_closings")
-        .select("id, status")
-        .eq("closing_month", closingMonth);
+    const { data: closings } = await supabase
+      .from("month_end_closings")
+      .select("id, status")
+      .eq("closing_month", closingMonth);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const completed = (closings || []).some((c: any) => c.status === "completed");
-      if (!completed) {
-        const monthName = prevDate.toLocaleString("en-US", { month: "long", year: "numeric" });
-        notifications.push({
-          type: "month_end",
-          title: "Month-End Closing Due",
-          body: `Time to do your ${monthName} month-end closing!`,
-        });
-      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const completed = (closings || []).some((c: any) => c.status === "completed");
+    if (!completed) {
+      const monthName = prevDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+      notifications.push({
+        type: "month_end",
+        title: "Month-End Closing Due",
+        body: `Time to do your ${monthName} month-end closing!`,
+      });
     }
   } catch {}
 

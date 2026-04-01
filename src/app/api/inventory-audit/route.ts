@@ -102,8 +102,8 @@ export async function GET() {
   // Find the most recent completed month-end closing
   const { data: lastClosing } = await supabase
     .from("month_end_closings")
-    .select("closing_month")
-    .eq("status", "completed")
+    .select("closing_month, status")
+    .in("status", ["completed", "completed_with_errors"])
     .order("closing_month", { ascending: false })
     .limit(1)
     .single();

@@ -148,18 +148,21 @@ export async function POST(request: NextRequest) {
       const adjustedComponents = new Set<string>();
 
       // BOM component variances (deduplicated)
+      // Round QtyDiff to whole numbers — QB inventory only supports integers,
+      // and fractional BOM quantities (e.g., ×0.2) can produce decimal variances.
       for (const fg of auditData.finished_goods_with_bom || []) {
         for (const comp of fg.bom_items || []) {
           if (adjustedComponents.has(comp.product_id)) continue; // Already handled via another parent
           adjustedComponents.add(comp.product_id);
-          if (comp.variance !== 0) {
+          const rounded = Math.round(comp.variance);
+          if (rounded !== 0) {
             const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", comp.product_id).single();
             if (prod) {
               adjLines.push({
                 DetailType: "ItemAdjustmentLineDetail",
                 ItemAdjustmentLineDetail: {
                   ItemRef: { value: prod.quickbooks_id },
-                  QtyDiff: comp.variance,
+                  QtyDiff: rounded,
                 },
               });
             }
@@ -169,14 +172,15 @@ export async function POST(request: NextRequest) {
 
       // Standalone FG variances
       for (const item of auditData.standalone_finished_goods || []) {
-        if (item.variance !== 0) {
+        const rounded = Math.round(item.variance);
+        if (rounded !== 0) {
           const { data: prod } = await supabase.from("products").select("quickbooks_id").eq("id", item.product_id).single();
           if (prod) {
             adjLines.push({
               DetailType: "ItemAdjustmentLineDetail",
               ItemAdjustmentLineDetail: {
                 ItemRef: { value: prod.quickbooks_id },
-                QtyDiff: item.variance,
+                QtyDiff: rounded,
               },
             });
           }

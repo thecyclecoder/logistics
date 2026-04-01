@@ -330,7 +330,7 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
     "shopify_clearing", "shopify_txn_fees",
     "paypal_clearing", "paypal_txn_fees",
     "braintree_clearing", "braintree_txn_fees",
-    "walmart_clearing", "shopify_other_adjustments",
+    "walmart_clearing", "gift_card_liability", "shopify_other_adjustments",
   ];
   const qbMappings = await getQBMappings(mappingKeys);
 
@@ -487,6 +487,18 @@ async function buildJournalEntryData(month: string, overrides?: { braintree_fees
       accountName: qbMappings.gift_card_liability.qb_name,
       amount: giftCardGross,
       description: `Gift card redemptions - ${month}`,
+    });
+  }
+
+  // "Other" gateway payments (unmapped gateways) → debit other adjustments
+  const otherGross = round2(grossByProcessor.get("other") || 0);
+  if (otherGross > 0 && qbMappings.shopify_other_adjustments) {
+    lines.push({
+      postingType: "Debit",
+      accountId: qbMappings.shopify_other_adjustments.qb_id,
+      accountName: qbMappings.shopify_other_adjustments.qb_name,
+      amount: otherGross,
+      description: `Other payment methods - ${month}`,
     });
   }
 

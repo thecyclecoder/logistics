@@ -44,6 +44,15 @@ export async function POST(request: NextRequest) {
 
     const data = await buildJournalEntryData(month, overrides);
 
+    // Persist Braintree fee override so GET preview stays consistent
+    if (overrides?.braintree_fees !== undefined) {
+      const supabaseWrite = createServiceClient();
+      await supabaseWrite.from("payment_processor_summaries")
+        .update({ processing_fees: overrides.braintree_fees })
+        .eq("closing_month", month)
+        .eq("processor", "braintree");
+    }
+
     // Validate balance
     const totalDebits = data.lines.filter((l: JELine) => l.postingType === "Debit").reduce((s: number, l: JELine) => s + l.amount, 0);
     const totalCredits = data.lines.filter((l: JELine) => l.postingType === "Credit").reduce((s: number, l: JELine) => s + l.amount, 0);

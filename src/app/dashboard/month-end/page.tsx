@@ -68,6 +68,8 @@ export default function MonthEndPage() {
   const [btFeesOverride, setBtFeesOverride] = useState("");
   const [jeUpdating, setJeUpdating] = useState(false);
   const [jeUpdateResult, setJeUpdateResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     setIsDebug(window.location.search.includes("debug=true"));
@@ -325,11 +327,65 @@ export default function MonthEndPage() {
                 </div>
               </div>
 
+              {/* Re-sync Processors */}
+              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">Payment Processor Data</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Re-sync to pick up final interchange fees (available after the 5th)
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setSyncing(true);
+                      setSyncResult(null);
+                      try {
+                        const res = await fetch("/api/qb/sync-processors", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ month }),
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.all_success) {
+                          setSyncResult({ ok: true, message: "All processors synced" });
+                          // Auto-refresh JE preview
+                          const previewRes = await fetch(`/api/qb/journal-entry?month=${month}`);
+                          if (previewRes.ok) {
+                            const preview = await previewRes.json();
+                            setJePreview(preview);
+                            const btFees = preview.summary?.processors?.braintree?.fees;
+                            if (btFees) setBtFeesOverride(String(btFees));
+                          }
+                        } else {
+                          const failed = data.results?.filter((r: { status: string }) => r.status === "error")
+                            .map((r: { processor: string }) => r.processor).join(", ");
+                          setSyncResult({ ok: false, message: `Failed: ${failed || "unknown"}` });
+                        }
+                      } catch {
+                        setSyncResult({ ok: false, message: "Request failed" });
+                      } finally { setSyncing(false); }
+                    }}
+                    disabled={syncing}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                    {syncing ? "Syncing..." : "Re-sync Processors"}
+                  </button>
+                </div>
+                {syncResult && (
+                  <div className={`mt-2 flex items-center gap-1.5 text-xs ${syncResult.ok ? "text-green-700" : "text-red-700"}`}>
+                    {syncResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                    {syncResult.message}
+                  </div>
+                )}
+              </div>
+
               {/* Braintree Fees Override */}
               <div className="mb-4 flex items-end gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="flex-1">
                   <label className="block text-xs font-medium text-amber-800 mb-1">
-                    Braintree CC Fees (estimated — update with actual from statement)
+                    Braintree Total Fees (from statement — API misses account-level fees)
                   </label>
                   <input
                     type="number"

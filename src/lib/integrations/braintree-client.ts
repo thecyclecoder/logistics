@@ -96,10 +96,10 @@ export async function aggregateBraintreeTransactions(month: string): Promise<Bra
     gross_sales: grossSales,
     estimated_fees: feeData.braintreeFees,
     interchange_fees: feeData.interchangeFees,
-    total_fees: feeData.braintreeFees + feeData.interchangeFees,
+    total_fees: feeData.totalFees,
     refunds,
     chargebacks,
-    net_deposits: grossSales - refunds - feeData.braintreeFees - feeData.interchangeFees,
+    net_deposits: grossSales - refunds - feeData.totalFees,
     transaction_count: salesCount,
   };
 }
@@ -107,6 +107,7 @@ export async function aggregateBraintreeTransactions(month: string): Promise<Bra
 interface FeeBreakdown {
   braintreeFees: number;
   interchangeFees: number;
+  totalFees: number;
 }
 
 function postBraintreeGQL(
@@ -144,6 +145,7 @@ async function getTransactionFees(month: string, creds: Record<string, string>):
 
   let braintreeFees = 0;
   let interchangeFees = 0;
+  let totalFees = 0;
 
   // Check each day for fee reports (keyed by disbursement date)
   // Also check first 5 days of next month for late disbursements
@@ -168,26 +170,29 @@ async function getTransactionFees(month: string, creds: Record<string, string>):
       if (lines.length < 2) continue;
 
       // Parse header to find fee columns dynamically
+      // Columns: ..., Est. Interchange Total Amount, ..., Braintree Total Amount, Est. Total Fee Amount
       const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/"/g, ""));
-      const settlementDateIdx = headers.findIndex((h) => h.includes("settlement") && h.includes("date"));
-      const interchangeFeeIdx = headers.findIndex((h) => h.includes("interchange") && h.includes("fee") && h.includes("amount"));
-      const braintreeFeeIdx = headers.findIndex((h) => h === "braintree fee" || (h.includes("braintree") && h.includes("fee")));
+      const settlementDateIdx = headers.findIndex((h) => h.includes("settlement") && h.includes("date") && !h.includes("currency"));
+      const interchangeFeeIdx = headers.findIndex((h) => h.includes("interchange total amount"));
+      const braintreeFeeIdx = headers.findIndex((h) => h.includes("braintree total amount"));
+      const totalFeeIdx = headers.findIndex((h) => h.includes("est. total fee amount") || h === "est. total fee amount");
 
-      // Fallback to original column positions if headers don't match
       const settDateCol = settlementDateIdx >= 0 ? settlementDateIdx : 7;
-      const btFeeCol = braintreeFeeIdx >= 0 ? braintreeFeeIdx : lines[0].split(",").length - 1;
 
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",").map((c) => c.trim().replace(/"/g, ""));
         const settlementDate = cols[settDateCol];
         if (!settlementDate || !settlementDate.startsWith(month)) continue;
 
-        const btFee = Number(cols[btFeeCol]) || 0;
-        braintreeFees += btFee;
-
+        if (braintreeFeeIdx >= 0) {
+          braintreeFees += Number(cols[braintreeFeeIdx]) || 0;
+        }
         if (interchangeFeeIdx >= 0) {
-          const icFee = Number(cols[interchangeFeeIdx]) || 0;
-          interchangeFees += icFee;
+          interchangeFees += Number(cols[interchangeFeeIdx]) || 0;
+        }
+        // Est. Total Fee Amount = interchange + braintree combined (most accurate)
+        if (totalFeeIdx >= 0) {
+          totalFees += Number(cols[totalFeeIdx]) || 0;
         }
       }
     } catch {
@@ -198,5 +203,7 @@ async function getTransactionFees(month: string, creds: Record<string, string>):
   return {
     braintreeFees: Math.round(braintreeFees * 100) / 100,
     interchangeFees: Math.round(interchangeFees * 100) / 100,
+    // Prefer the CSV's total (most accurate), fall back to sum of parts
+    totalFees: Math.round((totalFees > 0 ? totalFees : braintreeFees + interchangeFees) * 100) / 100,
   };
 }

@@ -21,6 +21,8 @@ async function getGateway(): Promise<{ gateway: braintree.BraintreeGateway; cred
 export interface BraintreeSummary {
   gross_sales: number;
   estimated_fees: number;
+  interchange_fees: number;
+  total_fees: number;
   refunds: number;
   chargebacks: number;
   net_deposits: number;
@@ -87,51 +89,63 @@ export async function aggregateBraintreeTransactions(month: string): Promise<Bra
     // Dispute search may not be available
   }
 
-  // Get estimated fees from GraphQL transaction-level fee reports
-  const estimatedFees = await getEstimatedFees(month, creds);
+  // Get fees from GraphQL transaction-level fee reports
+  const feeData = await getTransactionFees(month, creds);
 
   return {
     gross_sales: grossSales,
-    estimated_fees: estimatedFees,
+    estimated_fees: feeData.braintreeFees,
+    interchange_fees: feeData.interchangeFees,
+    total_fees: feeData.braintreeFees + feeData.interchangeFees,
     refunds,
     chargebacks,
-    net_deposits: grossSales - refunds - estimatedFees,
+    net_deposits: grossSales - refunds - feeData.braintreeFees - feeData.interchangeFees,
     transaction_count: salesCount,
   };
 }
 
-async function getEstimatedFees(month: string, creds: Record<string, string>): Promise<number> {
+interface FeeBreakdown {
+  braintreeFees: number;
+  interchangeFees: number;
+}
+
+function postBraintreeGQL(
+  authStr: string,
+  query: string
+): Promise<{ data?: { report?: { transactionLevelFees?: { url?: string } } }; errors?: unknown[] }> {
+  return new Promise((resolve, reject) => {
+    const options: https.RequestOptions = {
+      hostname: "payments.braintree-api.com",
+      path: "/graphql",
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${authStr}`,
+        "Content-Type": "application/json",
+        "Braintree-Version": "2024-08-01",
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); } catch { resolve({}); }
+      });
+    });
+    req.on("error", reject);
+    req.write(JSON.stringify({ query }));
+    req.end();
+  });
+}
+
+async function getTransactionFees(month: string, creds: Record<string, string>): Promise<FeeBreakdown> {
   const [year, mon] = month.split("-").map(Number);
   const lastDay = new Date(year, mon, 0).getDate();
   const authStr = Buffer.from(`${creds.public_key}:${creds.private_key}`).toString("base64");
 
-  const postGQL = (query: string): Promise<{ data?: { report?: { transactionLevelFees?: { url?: string } } }; errors?: unknown[] }> =>
-    new Promise((resolve, reject) => {
-      const options: https.RequestOptions = {
-        hostname: "payments.braintree-api.com",
-        path: "/graphql",
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${authStr}`,
-          "Content-Type": "application/json",
-          "Braintree-Version": "2024-08-01",
-        },
-      };
-      const req = https.request(options, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try { resolve(JSON.parse(data)); } catch { resolve({}); }
-        });
-      });
-      req.on("error", reject);
-      req.write(JSON.stringify({ query }));
-      req.end();
-    });
+  let braintreeFees = 0;
+  let interchangeFees = 0;
 
-  let totalFees = 0;
-
-  // Check each day for fee reports (they're keyed by disbursement date)
+  // Check each day for fee reports (keyed by disbursement date)
   // Also check first 5 days of next month for late disbursements
   const dates: string[] = [];
   for (let d = 1; d <= lastDay; d++) {
@@ -144,20 +158,36 @@ async function getEstimatedFees(month: string, creds: Record<string, string>): P
 
   for (const date of dates) {
     try {
-      const result = await postGQL(`{ report { transactionLevelFees(date: "${date}") { url } } }`);
+      const result = await postBraintreeGQL(authStr, `{ report { transactionLevelFees(date: "${date}") { url } } }`);
       const url = result.data?.report?.transactionLevelFees?.url;
       if (!url) continue;
 
       const csvRes = await fetch(url);
       const csv = await csvRes.text();
       const lines = csv.split("\n").filter((l) => l.trim());
+      if (lines.length < 2) continue;
+
+      // Parse header to find fee columns dynamically
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+      const settlementDateIdx = headers.findIndex((h) => h.includes("settlement") && h.includes("date"));
+      const interchangeFeeIdx = headers.findIndex((h) => h.includes("interchange") && h.includes("fee") && h.includes("amount"));
+      const braintreeFeeIdx = headers.findIndex((h) => h === "braintree fee" || (h.includes("braintree") && h.includes("fee")));
+
+      // Fallback to original column positions if headers don't match
+      const settDateCol = settlementDateIdx >= 0 ? settlementDateIdx : 7;
+      const btFeeCol = braintreeFeeIdx >= 0 ? braintreeFeeIdx : lines[0].split(",").length - 1;
 
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",");
-        const settlementDate = cols[7]; // Settlement Date column
-        if (settlementDate && settlementDate.startsWith(month)) {
-          const fee = Number(cols[cols.length - 1]) || 0;
-          totalFees += fee;
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/"/g, ""));
+        const settlementDate = cols[settDateCol];
+        if (!settlementDate || !settlementDate.startsWith(month)) continue;
+
+        const btFee = Number(cols[btFeeCol]) || 0;
+        braintreeFees += btFee;
+
+        if (interchangeFeeIdx >= 0) {
+          const icFee = Number(cols[interchangeFeeIdx]) || 0;
+          interchangeFees += icFee;
         }
       }
     } catch {
@@ -165,5 +195,8 @@ async function getEstimatedFees(month: string, creds: Record<string, string>): P
     }
   }
 
-  return Math.round(totalFees * 100) / 100;
+  return {
+    braintreeFees: Math.round(braintreeFees * 100) / 100,
+    interchangeFees: Math.round(interchangeFees * 100) / 100,
+  };
 }

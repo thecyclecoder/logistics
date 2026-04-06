@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         closing_month: month,
         processor: "braintree",
         gross_sales: bt.gross_sales,
-        processing_fees: bt.estimated_fees,
+        processing_fees: bt.total_fees,
         refunds: bt.refunds,
         chargebacks: bt.chargebacks,
         adjustments: 0,

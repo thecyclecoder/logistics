@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     const data = await aggregateBraintreeTransactions(month);
     await supabase.from("payment_processor_summaries").upsert({
       closing_month: month, processor: "braintree",
-      gross_sales: data.gross_sales, processing_fees: data.estimated_fees,
+      gross_sales: data.gross_sales, processing_fees: data.total_fees,
       refunds: data.refunds, chargebacks: data.chargebacks,
       adjustments: 0, net_deposits: data.net_deposits,
       raw_payload: data, synced_at: new Date().toISOString(),

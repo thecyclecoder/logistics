@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const creds = await getCredentials("braintree");
     const authStr = Buffer.from(`${creds.public_key}:${creds.private_key}`).toString("base64");
-    const month = "2026-03";
+    const month = "2026-04";
 
     const postGQL = (query: string) =>
       new Promise<{ data?: { report?: { transactionLevelFees?: { url?: string } } } }>((resolve, reject) => {
@@ -32,10 +32,10 @@ export async function GET() {
         req.end();
       });
 
-    // Fetch all days of March + first 5 days of April
+    // Fetch days of April (up to today) + first 5 days of May
     const dates: string[] = [];
-    for (let d = 1; d <= 31; d++) dates.push(`${month}-${String(d).padStart(2, "0")}`);
-    for (let d = 1; d <= 5; d++) dates.push(`2026-04-${String(d).padStart(2, "0")}`);
+    for (let d = 1; d <= 30; d++) dates.push(`${month}-${String(d).padStart(2, "0")}`);
+    for (let d = 1; d <= 5; d++) dates.push(`2026-05-${String(d).padStart(2, "0")}`);
 
     let headers: string | null = null;
     let braintreeTotal = 0;
@@ -92,11 +92,7 @@ export async function GET() {
         est_total_fee: Math.round(estTotalFee * 100) / 100,
         sum_of_parts: Math.round((braintreeTotal + interchangeTotal) * 100) / 100,
       },
-      statement_comparison: {
-        statement_braintree_fees: 537.06,
-        statement_passthrough_fees: 380.03,
-        statement_total_fees: 917.09,
-      },
+      note: "April MTD - checking if interchange fees are populated for current month",
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });

@@ -84,7 +84,7 @@ export default function MonthEndPage() {
     return isDebug || new Date() >= nextMonth;
   };
 
-  const alreadyRun = pastClosings.some((c) => c.closing_month === month && c.status === "completed");
+  const alreadyRun = pastClosings.some((c) => c.closing_month === month && (c.status === "completed" || c.status === "completed_with_errors"));
 
   const handleRun = async () => {
     if (!confirm(`Run month-end closing for ${month}? This will create entries in QuickBooks.`)) return;
@@ -437,10 +437,20 @@ export default function MonthEndPage() {
           <h2 className="text-base font-semibold text-gray-900 mb-3">Closing History</h2>
           <div className="space-y-2">
             {pastClosings.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2">
+              <button
+                key={c.id}
+                onClick={() => setMonth(c.closing_month)}
+                className={`flex w-full items-center justify-between rounded-lg px-4 py-2 text-left transition-colors ${
+                  c.closing_month === month
+                    ? "bg-brand-50 ring-1 ring-brand-200"
+                    : "bg-gray-50 hover:bg-gray-100"
+                }`}
+              >
                 <div className="flex items-center gap-2">
                   {c.status === "completed" ? (
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : c.status === "completed_with_errors" ? (
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
                   ) : c.status === "error" ? (
                     <XCircle className="h-4 w-4 text-red-500" />
                   ) : (
@@ -451,7 +461,7 @@ export default function MonthEndPage() {
                 <span className="text-xs text-gray-500">
                   {c.completed_at ? new Date(c.completed_at).toLocaleString() : c.status}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
